@@ -228,13 +228,14 @@ export async function getWorkerScript(scriptName: string): Promise<string> {
   if (!reader) return "（无法读取响应）";
 
   let raw = "";
-  let total = 0;
+  let totalBytes = 0;
   const MAX_BYTES = 100000;
-  while (total < MAX_BYTES) {
+  const decoder = new TextDecoder();
+  while (totalBytes < MAX_BYTES) {
     const { done, value } = await reader.read();
     if (done) break;
-    raw += new TextDecoder().decode(value, { stream: true });
-    total = raw.length;
+    totalBytes += value.byteLength;
+    raw += decoder.decode(value, { stream: true });
   }
   await reader.cancel();
 
@@ -306,9 +307,29 @@ export async function getKvValue(namespaceId: string, key: string): Promise<stri
 }
 
 export async function putKvValue(namespaceId: string, key: string, value: string): Promise<unknown> {
-  return proxy("PUT", `${accountPrefix()}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`, undefined, {
-    value,
+  // CF KV API 要求值放在请求 body 中（纯文本），而非 query param
+  // 不能用 proxy() 因为它会 JSON.stringify，KV 值需原样发送
+  const token = auth.pass;
+  if (!token) throw new ApiError(401, "未登录");
+  const res = await fetch(`/api/proxy/${accountPrefix()}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "text/plain",
+      "X-Panel-Pass": token,
+    },
+    body: value,
   });
+  // KV PUT 成功通常返回空 body，手动构造成功响应
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = `请求失败（HTTP ${res.status}）`;
+    try {
+      const data = JSON.parse(text);
+      msg = data.errors?.[0]?.message ?? data.error ?? msg;
+    } catch { /* 非 JSON 响应 */ }
+    throw new ApiError(res.status, msg);
+  }
+  return undefined;
 }
 
 export async function deleteKvKey(namespaceId: string, key: string): Promise<unknown> {
@@ -563,9 +584,13 @@ export async function createWorkerScript(params: CreateWorkerScriptParams): Prom
   if (!token) throw new ApiError(401, "未登录");
 
   const metadata: Record<string, unknown> = {
-    main_module: "worker.js",
     bindings: [] as CfWorkerBinding[],
   };
+
+  // main_module 仅在有代码上传时指定（指向 worker.js 模块）
+  if (params.code) {
+    metadata.main_module = "worker.js";
+  }
 
   // 如果有构建配置，加入 metadata
   if (params.build_config) {
@@ -581,7 +606,7 @@ export async function createWorkerScript(params: CreateWorkerScriptParams): Prom
   const metadataBlob = new Blob([JSON.stringify(metadata)], { type: "application/json" });
   formData.append("metadata", metadataBlob);
 
-  // 如果有代码，上传代码模块；如果没有代码但有 source，则只上传 metadata（不带 main_module）
+  // 如果有代码，上传代码模块
   if (params.code) {
     const codeBlob = new Blob([params.code], { type: "application/javascript+module" });
     formData.append("worker.js", codeBlob, "worker.js");

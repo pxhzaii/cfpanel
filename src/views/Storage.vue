@@ -1017,7 +1017,7 @@ onMounted(() => {
     </template>
 
     <!-- KV 值弹层 -->
-    <div v-if="activeNs && kvValueKey !== undefined && (kvValueKey !== '' || kvNewKey !== '')" class="mask">
+    <div v-if="activeNs && (kvValueKey !== '' || kvNewKey !== '')" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>{{ kvValueKey || "新建 Key" }}</h3>

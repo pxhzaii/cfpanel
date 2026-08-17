@@ -40,7 +40,8 @@ import type {
 const tab = ref<"workers" | "pages">("workers");
 const workers = ref<CfWorkerScript[]>([]);
 const pages = ref<CfPagesProject[]>([]);
-const loading = ref(false);
+const loadingWorkers = ref(false);
+const loadingPages = ref(false);
 const error = ref("");
 const confirmDelete = ref<string | null>(null);
 
@@ -122,26 +123,26 @@ const counts = computed(() => ({
 }));
 
 async function loadWorkers() {
-  loading.value = true;
+  loadingWorkers.value = true;
   error.value = "";
   try {
     workers.value = await listWorkers();
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
-    loading.value = false;
+    loadingWorkers.value = false;
   }
 }
 
 async function loadPages() {
-  loading.value = true;
+  loadingPages.value = true;
   error.value = "";
   try {
     pages.value = await listPagesProjects();
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
-    loading.value = false;
+    loadingPages.value = false;
   }
 }
 
@@ -465,6 +466,7 @@ async function createProject() {
     }
     // 构建配置
     const buildConfig: Record<string, string> = {};
+    if (newProjectFramework.value) buildConfig.framework = newProjectFramework.value;
     if (newProjectBuildCommand.value.trim()) buildConfig.build_command = newProjectBuildCommand.value.trim();
     if (newProjectDestDir.value.trim()) buildConfig.destination_dir = newProjectDestDir.value.trim();
     if (newProjectRootDir.value.trim()) buildConfig.root_dir = newProjectRootDir.value.trim();
@@ -531,7 +533,7 @@ onMounted(() => {
 
     <!-- Workers 列表 -->
     <div v-if="tab === 'workers' && !workerDetail">
-      <div v-if="loading" class="empty">加载中…</div>
+      <div v-if="loadingWorkers" class="empty">加载中…</div>
       <div v-else-if="workers.length === 0" class="empty">暂无 Workers 脚本</div>
       <div class="list">
         <div v-for="w in workers" :key="w.id" class="item" @click="openWorker(w.id)">
@@ -617,7 +619,7 @@ onMounted(() => {
 
     <!-- Pages 列表 -->
     <div v-if="tab === 'pages' && !activeProject">
-      <div v-if="loading" class="empty">加载中…</div>
+      <div v-if="loadingPages" class="empty">加载中…</div>
       <div v-else-if="pages.length === 0" class="empty">暂无 Pages 项目</div>
       <div class="list">
         <div v-for="p in pages" :key="p.id" class="item" @click="openDeployments(p)">
