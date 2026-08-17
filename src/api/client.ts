@@ -579,6 +579,11 @@ export async function getPagesProject(projectName: string): Promise<CfPagesProje
   return proxy<CfPagesProject>("GET", `${accountPrefix()}/pages/projects/${projectName}`);
 }
 
+/** 手动触发 Pages 项目部署（从 GitHub 源拉取并构建） */
+export async function createPagesDeployment(projectName: string): Promise<CfPagesDeployment> {
+  return proxy<CfPagesDeployment>("POST", `${accountPrefix()}/pages/projects/${projectName}/deployments`);
+}
+
 /**
  * 更新 Pages 项目绑定。
  * CF API 对绑定的 PATCH 是**合并语义**：

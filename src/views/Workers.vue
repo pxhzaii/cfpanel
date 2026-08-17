@@ -10,6 +10,7 @@ import {
   createPagesProject,
   deletePagesProject,
   getPagesProject,
+  createPagesDeployment,
   getPagesEnvVars,
   setPagesEnvVar,
   deletePagesEnvVar,
@@ -85,6 +86,7 @@ const confirmDeleteBinding = ref<string | null>(null);
 const pagesDeployments = ref<CfPagesDeployment[]>([]);
 const activeProject = ref<CfPagesProject | null>(null);
 const projectSubTab = ref<"deployments" | "envs" | "bindings" | "settings">("deployments");
+const deploying = ref(false);
 const envVars = ref<Record<string, CfPagesEnvVar>>({});
 const showAddEnv = ref(false);
 const newEnvName = ref("");
@@ -332,6 +334,22 @@ async function openDeployments(p: CfPagesProject) {
     pagesDeployments.value = await listPagesDeployments(p.name);
   } catch (e) {
     error.value = (e as Error).message;
+  }
+}
+
+async function triggerDeploy() {
+  if (!activeProject.value || deploying.value) return;
+  error.value = "";
+  deploying.value = true;
+  try {
+    await createPagesDeployment(activeProject.value.name);
+    // 等待几秒后刷新部署列表
+    await new Promise((r) => setTimeout(r, 3000));
+    pagesDeployments.value = await listPagesDeployments(activeProject.value.name);
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    deploying.value = false;
   }
 }
 
@@ -681,6 +699,9 @@ onMounted(() => {
 
       <!-- 部署记录 -->
       <div v-if="projectSubTab === 'deployments'">
+        <div class="env-bar">
+          <button class="primary" @click="triggerDeploy" :disabled="deploying">{{ deploying ? "部署中…" : "重新部署" }}</button>
+        </div>
         <div v-if="pagesDeployments.length === 0" class="empty">暂无部署记录</div>
         <div class="list">
           <div v-for="d in pagesDeployments" :key="d.id" class="item">
@@ -1107,9 +1128,9 @@ onMounted(() => {
               GitHub 仓库名
               <input v-model="newProjectGithubRepo" placeholder="如：my-project" />
             </label>
-            <p class="hint">需先在 Cloudflare 控制台授权 Cloudflare Pages GitHub App 访问对应仓库，否则创建后无法自动部署。</p>
+            <p class="hint">注意：通过面板创建的项目不会自动建立 GitHub Webhook，推代码不会自动触发部署。创建后请到项目详情 → 部署 → 点击"重新部署"手动触发首次部署。</p>
           </template>
-          <p v-if="!newProjectUseGithub" class="hint">创建后可在 Cloudflare 控制台连接 GitHub 仓库，或通过 wrangler 直接上传部署。</p>
+          <p v-if="!newProjectUseGithub" class="hint">创建后可在项目详情中手动触发部署，或通过 wrangler 直接上传。</p>
         </div>
         <div class="btns">
           <button class="primary" @click="createProject">创建</button>
