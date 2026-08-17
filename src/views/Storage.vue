@@ -448,32 +448,21 @@ async function uploadR2Object() {
   uploading.value = true;
   error.value = "";
   try {
-    let base64 = "";
+    let rawBody: BodyInit;
     let contentType = uploadContentType.value || "application/octet-stream";
     if (uploadMode.value === "file" && uploadFile.value) {
-      // 二进制文件 → base64
-      const arrayBuffer = await uploadFile.value.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      let binary = "";
-      const chunkSize = 8192;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-      }
-      base64 = btoa(binary);
-      if (!uploadContentType.value) contentType = uploadFile.value.type || "application/octet-stream";
+      // 二进制文件 — 直接用 File/Blob 上传
+      rawBody = uploadFile.value;
+      contentType = uploadContentType.value || uploadFile.value.type || "application/octet-stream";
     } else {
-      // 文本 → base64
-      const encoder = new TextEncoder();
-      const bytes = encoder.encode(uploadText.value);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      base64 = btoa(binary);
+      // 文本 — 包装为 Blob
+      rawBody = new Blob([uploadText.value], { type: "text/plain" });
       contentType = uploadContentType.value || "text/plain";
     }
     await putR2Object(
       activeR2Bucket.value.name,
       r2CurrentPrefix.value + uploadKey.value.trim(),
-      base64,
+      rawBody,
       contentType
     );
     uploadKey.value = "";

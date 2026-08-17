@@ -56,11 +56,20 @@ export const onRequest: ApiFunction = async ({ request, env, params }) => {
 
   const headers = new Headers();
   headers.set("Authorization", `Bearer ${env.CF_API_TOKEN}`);
-  headers.set("Content-Type", "application/json");
 
-  let body: string | undefined;
+  // 对于非 JSON 请求体（如 R2 上传二进制文件），透传客户端的 Content-Type
+  const clientCT = request.headers.get("Content-Type") ?? "";
+  if (clientCT && !clientCT.includes("application/json")) {
+    // 客户端指定了非 JSON 类型（如 image/jpeg），按原始类型转发
+    headers.set("Content-Type", clientCT);
+  } else {
+    headers.set("Content-Type", "application/json");
+  }
+
+  // 用 arrayBuffer 读取请求体，避免 text() 损坏二进制数据
+  let body: ArrayBuffer | undefined;
   if (method !== "GET" && method !== "HEAD") {
-    body = await request.text();
+    body = await request.arrayBuffer();
   }
 
   try {

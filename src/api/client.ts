@@ -355,11 +355,20 @@ export async function listR2Objects(bucketName: string, params?: { cursor?: stri
   return { result: data.result ?? [], cursor: data.result_info?.cursor };
 }
 
-/** R2 上传对象（base64 编码） */
-export async function putR2Object(bucketName: string, key: string, base64Body: string, contentType?: string): Promise<unknown> {
-  const body: Record<string, string> = { body: base64Body };
-  if (contentType) body.contentType = contentType;
-  return proxy("PUT", `${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`, body);
+/** R2 上传对象（直接发送原始二进制 body） */
+export async function putR2Object(bucketName: string, key: string, rawBody: BodyInit, contentType?: string): Promise<unknown> {
+  const token = auth.pass;
+  if (!token) throw new ApiError(401, "未登录");
+  const ct = contentType || "application/octet-stream";
+  const res = await fetch(`/api/proxy/${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": ct,
+      "X-Panel-Pass": token,
+    },
+    body: rawBody,
+  });
+  return handle<unknown>(res);
 }
 
 /** R2 获取对象内容（可能返回 JSON{base64} 或原始二进制，需兼容处理） */
