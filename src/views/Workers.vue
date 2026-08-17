@@ -55,6 +55,12 @@ const workerSubTab = ref<"code" | "secrets" | "bindings">("code");
 const showCreateWorker = ref(false);
 const newWorkerName = ref("");
 const newWorkerCode = ref("");
+const newWorkerUseGithub = ref(false);
+const newWorkerGithubOwner = ref("");
+const newWorkerGithubRepo = ref("");
+const newWorkerBuildCommand = ref("");
+const newWorkerDestDir = ref("");
+const newWorkerRootDir = ref("");
 
 // Worker 机密增删
 const showAddSecret = ref(false);
@@ -105,6 +111,10 @@ const newProjectBranch = ref("main");
 const newProjectUseGithub = ref(false);
 const newProjectGithubOwner = ref("");
 const newProjectGithubRepo = ref("");
+const newProjectBuildCommand = ref("");
+const newProjectDestDir = ref("");
+const newProjectRootDir = ref("");
+const newProjectFramework = ref("");
 
 const counts = computed(() => ({
   workers: workers.value.length,
@@ -172,15 +182,46 @@ async function createWorker() {
     error.value = "请输入 Worker 名称";
     return;
   }
-  if (!newWorkerCode.value.trim()) {
-    error.value = "请输入 Worker 代码";
+  if (!newWorkerUseGithub.value && !newWorkerCode.value.trim()) {
+    error.value = "请输入 Worker 代码，或选择连接 GitHub 仓库";
+    return;
+  }
+  if (newWorkerUseGithub.value && (!newWorkerGithubOwner.value.trim() || !newWorkerGithubRepo.value.trim())) {
+    error.value = "请填写 GitHub 仓库所有者和仓库名";
     return;
   }
   error.value = "";
   try {
-    await createWorkerScript(newWorkerName.value.trim(), newWorkerCode.value);
+    const params: Record<string, unknown> = { name: newWorkerName.value.trim() };
+    if (newWorkerUseGithub.value) {
+      params.source = {
+        type: "github",
+        config: {
+          owner: newWorkerGithubOwner.value.trim(),
+          repo_name: newWorkerGithubRepo.value.trim(),
+          production_branch: "main",
+          deployments_enabled: true,
+        },
+      };
+    } else {
+      params.code = newWorkerCode.value;
+    }
+    if (newWorkerBuildCommand.value.trim() || newWorkerDestDir.value.trim() || newWorkerRootDir.value.trim()) {
+      const buildConfig: Record<string, string> = {};
+      if (newWorkerBuildCommand.value.trim()) buildConfig.build_command = newWorkerBuildCommand.value.trim();
+      if (newWorkerDestDir.value.trim()) buildConfig.destination_dir = newWorkerDestDir.value.trim();
+      if (newWorkerRootDir.value.trim()) buildConfig.root_dir = newWorkerRootDir.value.trim();
+      params.build_config = buildConfig;
+    }
+    await createWorkerScript(params as unknown as Parameters<typeof createWorkerScript>[0]);
     newWorkerName.value = "";
     newWorkerCode.value = "";
+    newWorkerUseGithub.value = false;
+    newWorkerGithubOwner.value = "";
+    newWorkerGithubRepo.value = "";
+    newWorkerBuildCommand.value = "";
+    newWorkerDestDir.value = "";
+    newWorkerRootDir.value = "";
     showCreateWorker.value = false;
     await loadWorkers();
   } catch (e) {
@@ -422,12 +463,24 @@ async function createProject() {
         },
       };
     }
+    // 构建配置
+    const buildConfig: Record<string, string> = {};
+    if (newProjectBuildCommand.value.trim()) buildConfig.build_command = newProjectBuildCommand.value.trim();
+    if (newProjectDestDir.value.trim()) buildConfig.destination_dir = newProjectDestDir.value.trim();
+    if (newProjectRootDir.value.trim()) buildConfig.root_dir = newProjectRootDir.value.trim();
+    if (Object.keys(buildConfig).length > 0) {
+      params.build_config = buildConfig;
+    }
     await createPagesProject(params as unknown as Parameters<typeof createPagesProject>[0]);
     newProjectName.value = "";
     newProjectBranch.value = "main";
     newProjectUseGithub.value = false;
     newProjectGithubOwner.value = "";
     newProjectGithubRepo.value = "";
+    newProjectBuildCommand.value = "";
+    newProjectDestDir.value = "";
+    newProjectRootDir.value = "";
+    newProjectFramework.value = "";
     showCreateProject.value = false;
     await loadPages();
   } catch (e) {
@@ -721,6 +774,10 @@ onMounted(() => {
             <span class="info-label">子域名</span>
             <span class="info-val">{{ activeProject.subdomain }}</span>
           </div>
+      <div class="info-row" v-if="activeProject.framework">
+            <span class="info-label">框架</span>
+            <span class="info-val">{{ activeProject.framework }}</span>
+          </div>
           <div class="info-row" v-if="activeProject.source?.type">
             <span class="info-label">来源</span>
             <span class="info-val">{{ activeProject.source.type }}</span>
@@ -733,9 +790,13 @@ onMounted(() => {
             <span class="info-label">构建命令</span>
             <span class="info-val">{{ activeProject.build_config.build_command }}</span>
           </div>
-          <div class="info-row" v-if="activeProject.build_config?.destination_dir">
-            <span class="info-label">输出目录</span>
-            <span class="info-val">{{ activeProject.build_config.destination_dir }}</span>
+      <div class="info-row" v-if="activeProject.build_config?.root_dir">
+            <span class="info-label">根目录</span>
+            <span class="info-val">{{ activeProject.build_config.root_dir }}</span>
+          </div>
+          <div class="info-row" v-if="activeProject.production_branch">
+            <span class="info-label">生产分支</span>
+            <span class="info-val">{{ activeProject.production_branch }}</span>
           </div>
         </div>
       </div>
@@ -753,12 +814,45 @@ onMounted(() => {
             Worker 名称
             <input v-model="newWorkerName" placeholder="如：my-worker" @keyup.enter="createWorker" />
           </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" v-model="newWorkerUseGithub" />
+            <span>连接 GitHub 仓库</span>
+          </label>
+
+          <template v-if="newWorkerUseGithub">
+            <label>
+              GitHub 仓库所有者
+              <input v-model="newWorkerGithubOwner" placeholder="如：pxhzaii" />
+            </label>
+            <label>
+              GitHub 仓库名
+              <input v-model="newWorkerGithubRepo" placeholder="如：my-worker" />
+            </label>
+            <p class="hint">需先在 Cloudflare 控制台授权 Workers GitHub App 访问对应仓库。创建后可自动部署。</p>
+          </template>
+          <template v-else>
+            <label>
+              脚本代码
+              <textarea v-model="newWorkerCode" rows="6" placeholder='export default {\n  async fetch(request, env, ctx) {\n    return new Response("Hello World!");\n  },\n};' class="code-input"></textarea>
+            </label>
+          </template>
+
+          <div class="section-divider">构建配置（可选）</div>
           <label>
-            脚本代码
-            <textarea v-model="newWorkerCode" rows="8" placeholder='export default {\n  async fetch(request, env, ctx) {\n    return new Response("Hello World!");\n  },\n};' class="code-input"></textarea>
+            构建命令
+            <input v-model="newWorkerBuildCommand" placeholder="如：npm run build" />
+          </label>
+          <label>
+            部署目录（构建产物路径）
+            <input v-model="newWorkerDestDir" placeholder="如：dist" />
+          </label>
+          <label>
+            根目录（仓库子目录）
+            <input v-model="newWorkerRootDir" placeholder="如：apps/worker" />
           </label>
         </div>
-        <p class="hint">代码使用 ES 模块格式（export default），创建后可在详情页添加机密变量和绑定。</p>
+        <p v-if="!newWorkerUseGithub" class="hint">代码使用 ES 模块格式，创建后可在详情页添加机密变量和绑定。</p>
         <div class="btns">
           <button class="primary" @click="createWorker">创建</button>
         </div>
@@ -935,6 +1029,40 @@ onMounted(() => {
             生产分支
             <input v-model="newProjectBranch" placeholder="main" />
           </label>
+
+          <div class="section-divider">构建配置</div>
+          <label>
+            框架预设
+            <select v-model="newProjectFramework">
+              <option value="">无（自定义）</option>
+              <option value="vue">Vue</option>
+              <option value="react">React</option>
+              <option value="next">Next.js</option>
+              <option value="nuxt">Nuxt</option>
+              <option value="svelte">Svelte</option>
+              <option value="astro">Astro</option>
+              <option value="angular">Angular</option>
+              <option value="remix">Remix</option>
+              <option value="hugo">Hugo</option>
+              <option value="jekyll">Jekyll</option>
+              <option value="gatsby">Gatsby</option>
+              <option value="static">纯静态 HTML</option>
+            </select>
+          </label>
+          <label>
+            构建命令
+            <input v-model="newProjectBuildCommand" placeholder="如：npm run build" />
+          </label>
+          <label>
+            输出目录
+            <input v-model="newProjectDestDir" placeholder="如：dist、build、public" />
+          </label>
+          <label>
+            根目录（仓库子目录）
+            <input v-model="newProjectRootDir" placeholder="留空则使用仓库根目录" />
+          </label>
+
+          <div class="section-divider">GitHub 仓库</div>
           <label class="checkbox-row">
             <input type="checkbox" v-model="newProjectUseGithub" />
             <span>连接 GitHub 仓库</span>
@@ -950,8 +1078,8 @@ onMounted(() => {
             </label>
             <p class="hint">需先在 Cloudflare 控制台授权 Cloudflare Pages GitHub App 访问对应仓库，否则创建后无法自动部署。</p>
           </template>
+          <p v-if="!newProjectUseGithub" class="hint">创建后可在 Cloudflare 控制台连接 GitHub 仓库，或通过 wrangler 直接上传部署。</p>
         </div>
-        <p v-if="!newProjectUseGithub" class="hint">创建后可在 Cloudflare 控制台连接 GitHub 仓库，或通过 wrangler 直接上传部署。</p>
         <div class="btns">
           <button class="primary" @click="createProject">创建</button>
         </div>
@@ -1288,6 +1416,14 @@ onMounted(() => {
   width: 18px;
   height: 18px;
   accent-color: #f69a22;
+}
+.section-divider {
+  margin: 14px 0 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 600;
+  color: #f69a22;
 }
 .hint {
   margin: 8px 0 0;

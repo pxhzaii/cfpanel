@@ -91,6 +91,9 @@ export interface CfPagesProject {
   };
   created_on: string;
   modified_on: string;
+  framework?: string;
+  framework_version?: string;
+  production_branch?: string;
 }
 
 /** Pages 部署 */
@@ -254,7 +257,27 @@ export interface CfPagesDeploymentConfig {
   d1_databases?: CfPagesBinding[];
 }
 
-/** Pages 项目创建参数（含 GitHub 仓库源） */
+/** Worker 脚本创建参数 */
+export interface CreateWorkerScriptParams {
+  name: string;
+  code?: string;
+  build_config?: {
+    build_command?: string;
+    destination_dir?: string;
+    root_dir?: string;
+  };
+  source?: {
+    type: "github";
+    config: {
+      owner: string;
+      repo_name: string;
+      production_branch?: string;
+      deployments_enabled?: boolean;
+    };
+  };
+}
+
+/** Pages 项目创建参数（含 GitHub 仓库源 + 构建配置） */
 export interface CreatePagesProjectParams {
   name: string;
   production_branch?: string;

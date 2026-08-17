@@ -26,6 +26,7 @@ import type {
   CfWorkerSettings,
   CfPagesBinding,
   CreatePagesProjectParams,
+  CreateWorkerScriptParams,
   CfAccount,
   PageParams,
   DnsRecordForm,
@@ -554,20 +555,39 @@ export async function listWorkerBindings(scriptName: string): Promise<CfWorkerBi
 
 // ---------------- Worker 脚本新建/删除 ----------------
 
-/** 新建 Worker 脚本（PUT multipart/form-data） */
-export async function createWorkerScript(name: string, code: string): Promise<unknown> {
+/** 新建 Worker 脚本（PUT multipart/form-data）
+ * 如果提供 code 则上传代码模块；如果提供 source 则通过 metadata.source 连接 GitHub 仓库。
+ */
+export async function createWorkerScript(params: CreateWorkerScriptParams): Promise<unknown> {
   const token = auth.pass;
   if (!token) throw new ApiError(401, "未登录");
-  const metadata = {
+
+  const metadata: Record<string, unknown> = {
     main_module: "worker.js",
     bindings: [] as CfWorkerBinding[],
   };
+
+  // 如果有构建配置，加入 metadata
+  if (params.build_config) {
+    metadata.build_config = params.build_config;
+  }
+
+  // 如果有 GitHub 仓库源，加入 metadata.source
+  if (params.source) {
+    metadata.source = params.source;
+  }
+
   const formData = new FormData();
   const metadataBlob = new Blob([JSON.stringify(metadata)], { type: "application/json" });
   formData.append("metadata", metadataBlob);
-  const codeBlob = new Blob([code], { type: "application/javascript+module" });
-  formData.append("worker.js", codeBlob, "worker.js");
-  const res = await fetch(`/api/proxy/${accountPrefix()}/workers/scripts/${name}`, {
+
+  // 如果有代码，上传代码模块；如果没有代码但有 source，则只上传 metadata（不带 main_module）
+  if (params.code) {
+    const codeBlob = new Blob([params.code], { type: "application/javascript+module" });
+    formData.append("worker.js", codeBlob, "worker.js");
+  }
+
+  const res = await fetch(`/api/proxy/${accountPrefix()}/workers/scripts/${params.name}`, {
     method: "PUT",
     headers: { "X-Panel-Pass": token },
     body: formData,
