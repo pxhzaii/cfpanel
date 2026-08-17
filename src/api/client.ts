@@ -548,10 +548,16 @@ export async function setPagesEnvVar(projectName: string, varName: string, value
   });
 }
 
+/**
+ * 删除 Pages 环境变量。
+ * 注意：不能直接 delete 对象属性后 PATCH（CF API 不会合并删除），
+ * 必须把该变量显式设为 null，CF API 才会删除它。
+ * 严禁使用 DELETE /environments/{env}/vars/{name} 端点——实测它会误删整个 Pages 项目！
+ */
 export async function deletePagesEnvVar(projectName: string, varName: string, env: "production" | "preview" = "production"): Promise<unknown> {
   const proj = await getPagesProject(projectName);
-  const envVars = (proj.deployment_configs?.[env]?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
-  delete envVars[varName];
+  const envVars = (proj.deployment_configs?.[env]?.env_vars ?? {}) as Record<string, CfPagesEnvVar | null>;
+  envVars[varName] = null;
   return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, {
     deployment_configs: { [env]: { env_vars: envVars } },
   });
