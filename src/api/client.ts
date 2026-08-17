@@ -13,6 +13,11 @@ import type {
   CfKvNamespace,
   CfKvKey,
   CfR2Bucket,
+  CfR2BucketDetail,
+  CfR2Object,
+  CfR2ObjectContent,
+  CfR2CorsConfig,
+  CfR2CustomDomain,
   CfD1Database,
   CfD1QueryResult,
   CfPagesEnvVar,
@@ -331,6 +336,92 @@ export async function createR2Bucket(name: string, locationHint?: string): Promi
 
 export async function deleteR2Bucket(name: string): Promise<unknown> {
   return proxy("DELETE", `${accountPrefix()}/r2/buckets/${name}`);
+}
+
+/** R2 存储桶详情 */
+export async function getR2Bucket(name: string): Promise<CfR2BucketDetail> {
+  return proxy<CfR2BucketDetail>("GET", `${accountPrefix()}/r2/buckets/${name}`);
+}
+
+/** R2 对象列表 */
+export async function listR2Objects(bucketName: string, params?: { cursor?: string; per_page?: number }): Promise<{ result: CfR2Object[]; cursor?: string }> {
+  const res = await fetch(`/api/proxy/${accountPrefix()}/r2/buckets/${bucketName}/objects${qs({ per_page: params?.per_page ?? 100, cursor: params?.cursor })}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", "X-Panel-Pass": auth.pass ?? "" },
+  });
+  const data = await res.json() as CfResponse<CfR2Object[]>;
+  if (!res.ok || !data.success) {
+    const msg = data.errors?.[0]?.message ?? `请求失败（HTTP ${res.status}）`;
+    throw new ApiError(res.status, msg);
+  }
+  // R2 返回 result 为数组，分页游标在 result_info.cursor
+  return { result: data.result ?? [], cursor: data.result_info?.cursor };
+}
+
+/** R2 上传对象（base64 编码） */
+export async function putR2Object(bucketName: string, key: string, base64Body: string, contentType?: string): Promise<unknown> {
+  const body: Record<string, string> = { body: base64Body };
+  if (contentType) body.contentType = contentType;
+  return proxy("PUT", `${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`, body);
+}
+
+/** R2 获取对象内容 */
+export async function getR2Object(bucketName: string, key: string): Promise<CfR2ObjectContent> {
+  return proxy<CfR2ObjectContent>("GET", `${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`);
+}
+
+/** R2 删除对象 */
+export async function deleteR2Object(bucketName: string, key: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`);
+}
+
+/** R2 清空存储桶（逐个删除所有对象） */
+export async function emptyR2Bucket(bucketName: string): Promise<{ deleted: number; errors: string[] }> {
+  let cursor: string | undefined;
+  let deleted = 0;
+  const errors: string[] = [];
+  do {
+    const page = await listR2Objects(bucketName, { cursor, per_page: 100 });
+    for (const obj of page.result) {
+      try {
+        await deleteR2Object(bucketName, obj.key);
+        deleted++;
+      } catch (e) {
+        errors.push(`${obj.key}: ${(e as Error).message}`);
+      }
+    }
+    cursor = page.cursor;
+  } while (cursor);
+  return { deleted, errors };
+}
+
+/** R2 获取 CORS 策略 */
+export async function getR2Cors(bucketName: string): Promise<CfR2CorsConfig> {
+  return proxy<CfR2CorsConfig>("GET", `${accountPrefix()}/r2/buckets/${bucketName}/cors`);
+}
+
+/** R2 设置 CORS 策略 */
+export async function setR2Cors(bucketName: string, rules: CfR2CorsConfig["rules"]): Promise<unknown> {
+  // CORS 用 PUT（不是 PATCH，PATCH 返回 404）
+  return proxy("PUT", `${accountPrefix()}/r2/buckets/${bucketName}/cors`, { rules });
+}
+
+/** R2 获取自定义域列表 */
+export async function listR2CustomDomains(bucketName: string): Promise<CfR2CustomDomain[]> {
+  const result = await proxy<{ domains: CfR2CustomDomain[] }>("GET", `${accountPrefix()}/r2/buckets/${bucketName}/custom_domains`);
+  return result?.domains ?? [];
+}
+
+/** R2 添加自定义域 */
+export async function addR2CustomDomain(bucketName: string, domain: string, zoneId: string, minTLS?: string): Promise<unknown> {
+  const body: Record<string, string> = { domain, zoneId };
+  if (minTLS) body.minTLS = minTLS;
+  return proxy("POST", `${accountPrefix()}/r2/buckets/${bucketName}/custom_domains`, body);
+}
+
+/** R2 删除自定义域 */
+export async function deleteR2CustomDomain(bucketName: string, domain: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/r2/buckets/${bucketName}/custom_domains/${encodeURIComponent(domain)}`);
 }
 
 // ---------------- D1 ----------------
