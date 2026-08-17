@@ -2,12 +2,18 @@
 import { ref, onMounted, computed } from "vue";
 import {
   listKvNamespaces,
+  createKvNamespace,
+  deleteKvNamespace,
   listKvKeys,
   getKvValue,
   putKvValue,
   deleteKvKey,
   listR2Buckets,
+  createR2Bucket,
+  deleteR2Bucket,
   listD1Databases,
+  createD1Database,
+  deleteD1Database,
   runD1Query,
 } from "../api/client";
 import type { CfKvNamespace, CfKvKey, CfR2Bucket, CfD1Database, CfD1QueryResult } from "../api/types";
@@ -23,18 +29,27 @@ const kvValue = ref("");
 const kvValueKey = ref("");
 const kvNewKey = ref("");
 const kvNewValue = ref("");
+const showCreateKv = ref(false);
+const newKvTitle = ref("");
 
 // R2
 const r2Buckets = ref<CfR2Bucket[]>([]);
+const showCreateR2 = ref(false);
+const newR2Name = ref("");
+const newR2Location = ref("");
 
 // D1
 const d1Databases = ref<CfD1Database[]>([]);
 const activeDb = ref<CfD1Database | null>(null);
 const sql = ref("");
 const dbResult = ref<CfD1QueryResult | null>(null);
+const showCreateD1 = ref(false);
+const newD1Name = ref("");
+const dbTables = ref<string[]>([]);
 
 const loading = ref(false);
 const error = ref("");
+const confirmDelete = ref<string | null>(null);
 
 function closeKvSheet() {
   kvValueKey.value = "";
@@ -42,7 +57,6 @@ function closeKvSheet() {
   kvNewValue.value = "";
 }
 
-/** 当前 KV 编辑中的值（查看 or 新建） */
 const kvEditValue = computed({
   get: () => (kvValueKey.value ? kvValue.value : kvNewValue.value),
   set: (v: string) => {
@@ -66,6 +80,34 @@ async function loadKvNamespaces() {
     error.value = (e as Error).message;
   } finally {
     loading.value = false;
+  }
+}
+
+async function createKv() {
+  if (!newKvTitle.value.trim()) {
+    error.value = "请输入命名空间名称";
+    return;
+  }
+  error.value = "";
+  try {
+    await createKvNamespace(newKvTitle.value.trim());
+    newKvTitle.value = "";
+    showCreateKv.value = false;
+    await loadKvNamespaces();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function removeKvNamespace(ns: CfKvNamespace) {
+  error.value = "";
+  try {
+    await deleteKvNamespace(ns.id);
+    confirmDelete.value = null;
+    if (activeNs.value?.id === ns.id) activeNs.value = null;
+    await loadKvNamespaces();
+  } catch (e) {
+    error.value = (e as Error).message;
   }
 }
 
@@ -114,6 +156,7 @@ async function saveKv() {
       await putKvValue(activeNs.value.id, kvNewKey.value.trim(), kvNewValue.value);
     }
     loadKvKeys();
+    closeKvSheet();
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -124,16 +167,14 @@ async function removeKvKey(key: string) {
   error.value = "";
   try {
     await deleteKvKey(activeNs.value.id, key);
-    if (kvValueKey.value === key) {
-      kvValueKey.value = "";
-      kvValue.value = "";
-    }
+    if (kvValueKey.value === key) closeKvSheet();
     loadKvKeys();
   } catch (e) {
     error.value = (e as Error).message;
   }
 }
 
+// R2
 async function loadR2() {
   loading.value = true;
   error.value = "";
@@ -146,6 +187,35 @@ async function loadR2() {
   }
 }
 
+async function createR2() {
+  if (!newR2Name.value.trim()) {
+    error.value = "请输入存储桶名称";
+    return;
+  }
+  error.value = "";
+  try {
+    await createR2Bucket(newR2Name.value.trim(), newR2Location.value || undefined);
+    newR2Name.value = "";
+    newR2Location.value = "";
+    showCreateR2.value = false;
+    await loadR2();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function removeR2Bucket(b: CfR2Bucket) {
+  error.value = "";
+  try {
+    await deleteR2Bucket(b.name);
+    confirmDelete.value = null;
+    await loadR2();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+// D1
 async function loadD1() {
   loading.value = true;
   error.value = "";
@@ -155,6 +225,33 @@ async function loadD1() {
     error.value = (e as Error).message;
   } finally {
     loading.value = false;
+  }
+}
+
+async function createD1() {
+  if (!newD1Name.value.trim()) {
+    error.value = "请输入数据库名称";
+    return;
+  }
+  error.value = "";
+  try {
+    await createD1Database(newD1Name.value.trim());
+    newD1Name.value = "";
+    showCreateD1.value = false;
+    await loadD1();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function removeD1Database(db: CfD1Database) {
+  error.value = "";
+  try {
+    await deleteD1Database(db.uuid);
+    confirmDelete.value = null;
+    await loadD1();
+  } catch (e) {
+    error.value = (e as Error).message;
   }
 }
 
@@ -172,16 +269,29 @@ async function runSql() {
   }
 }
 
+async function loadDbTables() {
+  if (!activeDb.value) return;
+  try {
+    const result = await runD1Query(activeDb.value.uuid, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+    dbTables.value = (result?.[0]?.results ?? []).map((r) => String(r.name));
+  } catch {
+    dbTables.value = [];
+  }
+}
+
 function openDb(db: CfD1Database) {
   activeDb.value = db;
   sql.value = "";
   dbResult.value = null;
+  dbTables.value = [];
+  loadDbTables();
 }
 
 function backDb() {
   activeDb.value = null;
   dbResult.value = null;
   sql.value = "";
+  dbTables.value = [];
 }
 
 function switchTab(t: "kv" | "r2" | "d1") {
@@ -220,9 +330,14 @@ onMounted(() => {
               <div class="item-title">{{ ns.title }}</div>
               <div class="item-sub">{{ ns.id }}</div>
             </div>
-            <div class="item-arrow">›</div>
+            <button class="del-btn" @click.stop="confirmDelete = ns.id" v-if="confirmDelete !== ns.id">删除</button>
+            <div v-else class="confirm-box">
+              <button class="danger sm" @click.stop="removeKvNamespace(ns)">确认</button>
+              <button class="sm" @click.stop="confirmDelete = null">取消</button>
+            </div>
           </div>
         </div>
+        <button class="add-btn" @click="showCreateKv = true">+ 新建命名空间</button>
       </div>
 
       <div v-else>
@@ -249,10 +364,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 新增 key 快捷入口 -->
-        <button class="add-btn" @click="openNewKv">
-          + 新建 Key
-        </button>
+        <button class="add-btn" @click="openNewKv">+ 新建 Key</button>
       </div>
     </template>
 
@@ -269,8 +381,14 @@ onMounted(() => {
               <template v-if="b.location"> · {{ b.location }}</template>
             </div>
           </div>
+          <button class="del-btn" @click="confirmDelete = `r2:${b.name}`" v-if="confirmDelete !== `r2:${b.name}`">删除</button>
+          <div v-else class="confirm-box">
+            <button class="danger sm" @click="removeR2Bucket(b)">确认</button>
+            <button class="sm" @click="confirmDelete = null">取消</button>
+          </div>
         </div>
       </div>
+      <button class="add-btn" @click="showCreateR2 = true">+ 新建存储桶</button>
     </template>
 
     <!-- D1 -->
@@ -283,10 +401,18 @@ onMounted(() => {
             <div class="item-main">
               <div class="item-title">{{ db.name }}</div>
               <div class="item-sub">{{ db.uuid }}</div>
+              <div class="item-sub" v-if="db.num_tables !== undefined">{{ db.num_tables }} 张表 · {{ Math.round((db.file_size ?? 0) / 1024) }}KB</div>
             </div>
-            <div class="item-arrow">›</div>
+            <div class="item-side">
+              <button class="del-btn" @click.stop="confirmDelete = `d1:${db.uuid}`" v-if="confirmDelete !== `d1:${db.uuid}`">删除</button>
+              <div v-else class="confirm-box">
+                <button class="danger sm" @click.stop="removeD1Database(db)">确认</button>
+                <button class="sm" @click.stop="confirmDelete = null">取消</button>
+              </div>
+            </div>
           </div>
         </div>
+        <button class="add-btn" @click="showCreateD1 = true">+ 新建数据库</button>
       </div>
 
       <div v-else>
@@ -294,16 +420,25 @@ onMounted(() => {
           <button class="back" @click="backDb">‹ 返回</button>
           <span class="ns-title">{{ activeDb.name }}</span>
         </div>
+
+        <!-- 表列表 -->
+        <div v-if="dbTables.length > 0" class="tables-box">
+          <div class="tables-title">表（{{ dbTables.length }}）</div>
+          <div class="tables-list">
+            <span v-for="t in dbTables" :key="t" class="table-tag" @click="sql = `SELECT * FROM ${t} LIMIT 50`">{{ t }}</span>
+          </div>
+        </div>
+
         <textarea v-model="sql" rows="4" placeholder="输入 SQL，如：SELECT * FROM users LIMIT 10" class="sql"></textarea>
         <button class="primary run" @click="runSql" :disabled="loading">
           {{ loading ? "执行中…" : "执行 SQL" }}
         </button>
         <div v-if="dbResult" class="db-result">
-          <div class="db-meta" v-if="dbResult.meta">
-            rows_read: {{ dbResult.meta.rows_read }} · rows_written: {{ dbResult.meta.rows_written }} ·
-            耗时 {{ dbResult.meta.duration }}ms
+          <div class="db-meta" v-if="dbResult[0]?.meta">
+            rows_read: {{ dbResult[0].meta.rows_read }} · rows_written: {{ dbResult[0].meta.rows_written }} ·
+            耗时 {{ dbResult[0].meta.duration.toFixed(1) }}ms
           </div>
-          <pre>{{ JSON.stringify(dbResult.results ?? [], null, 2) }}</pre>
+          <pre>{{ JSON.stringify(dbResult[0]?.results ?? [], null, 2) }}</pre>
         </div>
       </div>
     </template>
@@ -328,6 +463,74 @@ onMounted(() => {
         <div class="btns">
           <button v-if="kvValueKey" class="danger" @click="removeKvKey(kvValueKey)">删除</button>
           <button class="primary" @click="saveKv">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 创建 KV 命名空间弹层 -->
+    <div v-if="showCreateKv" class="mask" @click.self="showCreateKv = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>新建 KV 命名空间</h3>
+          <button class="close" @click="showCreateKv = false">关闭</button>
+        </div>
+        <div class="fields">
+          <label>
+            名称
+            <input v-model="newKvTitle" placeholder="如：my-kv-namespace" @keyup.enter="createKv" />
+          </label>
+        </div>
+        <div class="btns">
+          <button class="primary" @click="createKv">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 创建 R2 存储桶弹层 -->
+    <div v-if="showCreateR2" class="mask" @click.self="showCreateR2 = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>新建 R2 存储桶</h3>
+          <button class="close" @click="showCreateR2 = false">关闭</button>
+        </div>
+        <div class="fields">
+          <label>
+            名称
+            <input v-model="newR2Name" placeholder="如：my-bucket" @keyup.enter="createR2" />
+          </label>
+          <label>
+            位置（可选）
+            <select v-model="newR2Location">
+              <option value="">默认</option>
+              <option value="APAC">亚太</option>
+              <option value="WNAM">北美西部</option>
+              <option value="ENAM">北美东部</option>
+              <option value="EEUR">欧洲东部</option>
+              <option value="WEUR">欧洲西部</option>
+            </select>
+          </label>
+        </div>
+        <div class="btns">
+          <button class="primary" @click="createR2">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 创建 D1 数据库弹层 -->
+    <div v-if="showCreateD1" class="mask" @click.self="showCreateD1 = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>新建 D1 数据库</h3>
+          <button class="close" @click="showCreateD1 = false">关闭</button>
+        </div>
+        <div class="fields">
+          <label>
+            名称
+            <input v-model="newD1Name" placeholder="如：my-database" @keyup.enter="createD1" />
+          </label>
+        </div>
+        <div class="btns">
+          <button class="primary" @click="createD1">创建</button>
         </div>
       </div>
     </div>
@@ -416,6 +619,39 @@ onMounted(() => {
   color: #5d6879;
   font-size: 20px;
 }
+.item-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.del-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 93, 77, 0.3);
+  background: transparent;
+  color: #ff7a6e;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.confirm-box {
+  display: flex;
+  gap: 4px;
+}
+.sm {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: #aab3c5;
+  font-size: 12px;
+  cursor: pointer;
+}
+.confirm-box .danger {
+  padding: 4px 8px;
+  font-size: 12px;
+}
 .kv-head {
   display: flex;
   align-items: center;
@@ -486,6 +722,34 @@ onMounted(() => {
 .run {
   margin-top: 8px;
   width: 100%;
+}
+.tables-box {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.tables-title {
+  font-size: 12px;
+  color: #8b95a9;
+  margin-bottom: 8px;
+}
+.tables-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.table-tag {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(249, 162, 34, 0.1);
+  color: #f69a22;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid rgba(249, 162, 34, 0.2);
+}
+.table-tag:hover {
+  background: rgba(249, 162, 34, 0.2);
 }
 .db-result {
   margin-top: 10px;
@@ -561,7 +825,8 @@ onMounted(() => {
   color: #8b95a9;
 }
 .fields input,
-.fields textarea {
+.fields textarea,
+.fields select {
   padding: 10px 12px;
   border-radius: 9px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -571,6 +836,9 @@ onMounted(() => {
   outline: none;
   font-family: inherit;
   resize: vertical;
+}
+.fields select option {
+  background: #121a2c;
 }
 .btns {
   display: flex;
