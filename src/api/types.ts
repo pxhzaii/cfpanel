@@ -86,6 +86,7 @@ export interface CfPagesProject {
   };
   deployment_configs?: {
     production?: { env_vars?: Record<string, unknown> };
+    preview?: { env_vars?: Record<string, unknown> };
   };
   created_on: string;
   modified_on: string;
@@ -129,16 +130,47 @@ export interface CfD1Database {
   running_integrations?: unknown[];
 }
 
-/** D1 查询结果 */
-export interface CfD1QueryResult {
+/** D1 单条 SQL 执行结果 */
+export interface CfD1QueryResultItem {
   success: boolean;
   meta?: {
     rows_read: number;
     rows_written: number;
     duration: number;
+    changes: number;
+    last_row_id: number;
+    changed_db: boolean;
+    size_after: number;
   };
   results?: Record<string, unknown>[];
   errors?: unknown[];
+}
+
+/** D1 查询返回的是数组（每条 SQL 一个元素） */
+export type CfD1QueryResult = CfD1QueryResultItem[];
+
+/** Pages 环境变量条目 */
+export interface CfPagesEnvVar {
+  value?: string;
+  type: "plain_text" | "secret_text";
+}
+
+/** Worker 密钥 */
+export interface CfWorkerSecret {
+  name: string;
+  type: string;
+}
+
+/** Worker 绑定 */
+export interface CfWorkerBinding {
+  type: string;
+  name: string;
+  id?: string;
+  namespace_id?: string;
+  database_id?: string;
+  bucket_name?: string;
+  class_name?: string;
+  environment?: string;
 }
 
 /** 账号信息 */
