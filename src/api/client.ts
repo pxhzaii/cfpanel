@@ -530,18 +530,31 @@ export async function runD1Query(databaseId: string, sql: string): Promise<CfD1Q
 // ---------------- Pages 环境变量 ----------------
 
 export async function getPagesEnvVars(projectName: string, env: "production" | "preview" = "production"): Promise<Record<string, CfPagesEnvVar>> {
-  const result = await proxy<CfPagesProject>("GET", `${accountPrefix()}/pages/projects/${projectName}/environments/${env}/vars`);
-  // CF API 返回完整 project 对象，环境变量在 deployment_configs.{env}.env_vars 中
-  const envVars = result?.deployment_configs?.[env]?.env_vars;
-  return (envVars as Record<string, CfPagesEnvVar>) ?? {};
+  const proj = await getPagesProject(projectName);
+  return (proj.deployment_configs?.[env]?.env_vars as Record<string, CfPagesEnvVar>) ?? {};
 }
 
+/**
+ * 添加/更新 Pages 环境变量。
+ * 注意：PATCH /environments/{env}/vars/{name} 端点会返回 200 但实际上不生效（CF API 的坑），
+ * 必须改为 PATCH 整个项目，通过 deployment_configs.{env}.env_vars 提交。
+ */
 export async function setPagesEnvVar(projectName: string, varName: string, value: string, env: "production" | "preview" = "production", type: "plain_text" | "secret_text" = "plain_text"): Promise<unknown> {
-  return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}/environments/${env}/vars/${encodeURIComponent(varName)}`, { value, type });
+  const proj = await getPagesProject(projectName);
+  const envVars = (proj.deployment_configs?.[env]?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
+  envVars[varName] = { value, type };
+  return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, {
+    deployment_configs: { [env]: { env_vars: envVars } },
+  });
 }
 
 export async function deletePagesEnvVar(projectName: string, varName: string, env: "production" | "preview" = "production"): Promise<unknown> {
-  return proxy("DELETE", `${accountPrefix()}/pages/projects/${projectName}/environments/${env}/vars/${encodeURIComponent(varName)}`);
+  const proj = await getPagesProject(projectName);
+  const envVars = (proj.deployment_configs?.[env]?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
+  delete envVars[varName];
+  return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, {
+    deployment_configs: { [env]: { env_vars: envVars } },
+  });
 }
 
 // ---------------- Pages 项目管理 ----------------
