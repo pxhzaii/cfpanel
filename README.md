@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '0d8e6694-ac97-44ae-8873-98158f51e097'
-  PropagateID: '0d8e6694-ac97-44ae-8873-98158f51e097'
-  ReservedCode1: '5d9fc45b-9f67-4df2-ad4b-50772e6cb053'
-  ReservedCode2: '5d9fc45b-9f67-4df2-ad4b-50772e6cb053'
+  ProduceID: '14efce88-49f0-48da-b865-0dada354c6ea'
+  PropagateID: '14efce88-49f0-48da-b865-0dada354c6ea'
+  ReservedCode1: '5311acee-af83-4014-9509-8ba2d4863f62'
+  ReservedCode2: '5311acee-af83-4014-9509-8ba2d4863f62'
 ---
 
 # CF Panel
@@ -23,8 +23,8 @@ AIGC:
 ## 安全设计
 
 - 面板有独立**访问口令**（`PANEL_PASSWORD`），每个 API 请求都会校验，口令只存在浏览器 localStorage
-- **Cloudflare API Token**（`CF_API_TOKEN`）只存在服务端环境变量，经 `/api/proxy/` 转发调用 Cloudflare API，**绝不下发到浏览器**
-- 页面无任何 Token 输入框，Token 泄露面小
+- **CF API 凭证**（API Token 或 Global API Key）只存在服务端环境变量，经 `/api/proxy/` 转发调用 Cloudflare API，**绝不下发到浏览器**
+- 页面无任何 Token/Key 输入框，凭证泄露面小
 
 ## 快速部署（3 分钟，零代码）
 
@@ -32,11 +32,21 @@ AIGC:
 
 点击 [https://github.com/pxhzaii/cfpanel/fork](https://github.com/pxhzaii/cfpanel/fork)，把仓库 Fork 到你自己的 GitHub 账号下。
 
-### 第 2 步：创建 Cloudflare API Token
+### 第 2 步：准备 Cloudflare API 凭证
+
+两种方式任选其一：
+
+**方式一：API Token（推荐，最小权限）**
 
 1. 打开 [API Tokens 页面](https://dash.cloudflare.com/profile/api-tokens)
 2. 点 **Create Token**
 3. 选 **Create Custom Token** 或使用模板，按下方权限表勾选
+
+**方式二：Global API Key（全权限，简单）**
+
+1. 打开 [API Tokens 页面](https://dash.cloudflare.com/profile/api-tokens)
+2. 页面底部找到 **Global API Key**，点 **View** 查看
+3. 记下你的邮箱和 Key
 
 ### 第 3 步：部署到 Cloudflare Pages
 
@@ -48,10 +58,20 @@ AIGC:
    - Node 版本：20 或以上
 4. 展开高级设置 → 添加环境变量：
 
+   **方式一（API Token）：**
+
    | 变量名 | 值 |
    | --- | --- |
    | `PANEL_PASSWORD` | 你自定义的访问口令（强口令） |
    | `CF_API_TOKEN` | 第 2 步创建的 Token |
+
+   **方式二（Global API Key）：**
+
+   | 变量名 | 值 |
+   | --- | --- |
+   | `PANEL_PASSWORD` | 你自定义的访问口令（强口令） |
+   | `CF_API_EMAIL` | 你的 Cloudflare 账号邮箱 |
+   | `CF_API_KEY` | Global API Key |
 
 5. 保存并部署，等待构建完成（约 1-2 分钟）
 
@@ -67,12 +87,26 @@ AIGC:
 
 ## 环境变量
 
-在 Cloudflare Pages 项目 **设置 → 环境变量** 中配置（生产环境建议同时配置到 Production 与 Preview）：
+在 Cloudflare Pages 项目 **设置 → 环境变量** 中配置（生产环境建议同时配置到 Production 与 Preview）。
+
+支持两种认证方式（二选一）：
+
+**方式一：API Token（推荐）**
 
 | 变量名 | 必填 | 说明 |
 | --- | --- | --- |
 | `PANEL_PASSWORD` | 是 | 访问面板的口令，请用强口令 |
 | `CF_API_TOKEN` | 是 | Cloudflare API Token，权限见下表 |
+
+**方式二：Global API Key（全权限）**
+
+| 变量名 | 必填 | 说明 |
+| --- | --- | --- |
+| `PANEL_PASSWORD` | 是 | 访问面板的口令，请用强口令 |
+| `CF_API_EMAIL` | 是 | Cloudflare 账号邮箱 |
+| `CF_API_KEY` | 是 | Global API Key |
+
+> 同时配置两种方式时，优先使用 API Token。
 
 ## API Token 权限
 
@@ -118,7 +152,7 @@ npx wrangler pages dev dist
 
 ## 说明
 
-- API Token 泄漏风险由 Token 本身权限决定，建议按最小权限创建
+- API Token 泄漏风险由 Token 本身权限决定，建议按最小权限创建；Global API Key 拥有全部权限，请注意保管
 - 面板仅提供浏览器端管理，不做 OAuth 登录（保持简单、无第三方依赖）
 - 手机上也可以把面板网址“添加到主屏幕”当作 App 使用
 
