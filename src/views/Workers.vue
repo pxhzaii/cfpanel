@@ -114,7 +114,6 @@ const newProjectUseGithub = ref(false);
 const newProjectGithubOwner = ref("");
 const newProjectGithubRepo = ref("");
 const newProjectBuildCommand = ref("");
-const newProjectDeployCommand = ref("");
 const newProjectDestDir = ref("");
 const newProjectRootDir = ref("");
 const newProjectFramework = ref("");
@@ -473,7 +472,6 @@ async function createProject() {
     const buildConfig: Record<string, string> = {};
     if (newProjectFramework.value) buildConfig.framework = newProjectFramework.value;
     if (newProjectBuildCommand.value.trim()) buildConfig.build_command = newProjectBuildCommand.value.trim();
-    if (newProjectDeployCommand.value.trim()) buildConfig.deploy_command = newProjectDeployCommand.value.trim();
     if (newProjectDestDir.value.trim()) buildConfig.destination_dir = newProjectDestDir.value.trim();
     if (newProjectRootDir.value.trim()) buildConfig.root_dir = newProjectRootDir.value.trim();
     if (Object.keys(buildConfig).length > 0) {
@@ -486,7 +484,6 @@ async function createProject() {
     newProjectGithubOwner.value = "";
     newProjectGithubRepo.value = "";
     newProjectBuildCommand.value = "";
-    newProjectDeployCommand.value = "";
     newProjectDestDir.value = "";
     newProjectRootDir.value = "";
     newProjectFramework.value = "";
@@ -1065,10 +1062,6 @@ onMounted(() => {
           <label>
             构建命令
             <input v-model="newProjectBuildCommand" placeholder="如：npm run build" />
-          </label>
-          <label>
-            部署命令
-            <input v-model="newProjectDeployCommand" placeholder="如：npx wrangler pages deploy dist" />
           </label>
           <label>
             输出目录
