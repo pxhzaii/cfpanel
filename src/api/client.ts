@@ -202,12 +202,9 @@ export async function getWorkerScript(scriptName: string): Promise<string> {
 
 // ---------------- Pages ----------------
 
-export async function listPagesProjects(params?: PageParams): Promise<CfPagesProject[]> {
+export async function listPagesProjects(): Promise<CfPagesProject[]> {
   const acctId = await getAcctId();
-  return proxy<CfPagesProject[]>("GET", `accounts/${acctId}/pages/projects`, undefined, {
-    ...params,
-    "per_page": 50,
-  });
+  return proxy<CfPagesProject[]>("GET", `accounts/${acctId}/pages/projects`);
 }
 
 export async function listPagesDeployments(projectName: string): Promise<CfPagesDeployment[]> {
