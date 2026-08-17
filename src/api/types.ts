@@ -10,6 +10,7 @@ export interface CfResponse<T = unknown> {
     count: number;
     total_count: number;
     total_pages: number;
+    cursor?: string;
   };
 }
 
@@ -117,6 +118,64 @@ export interface CfR2Bucket {
   name: string;
   creation_date: string;
   location?: string;
+  storage_class?: string;
+  jurisdiction?: string;
+}
+
+/** R2 存储桶详情（GET /buckets/{name}） */
+export interface CfR2BucketDetail {
+  name: string;
+  creation_date: string;
+  location: string;
+  storage_class: string;
+  jurisdiction: string;
+}
+
+/** R2 对象列表项 */
+export interface CfR2Object {
+  key: string;
+  etag: string;
+  last_modified: string;
+  size: number;
+  http_metadata?: {
+    contentType?: string;
+  };
+  custom_metadata?: Record<string, string>;
+  storage_class?: string;
+}
+
+/** R2 对象内容（GET /objects/{key}） */
+export interface CfR2ObjectContent {
+  body: string;
+  contentType: string;
+}
+
+/** R2 CORS 规则 */
+export interface CfR2CorsRule {
+  allowed: {
+    origins: string[];
+    methods: string[];
+    headers: string[];
+  };
+  exposeHeaders?: string[];
+  maxAgeSeconds?: number;
+}
+
+/** R2 CORS 响应 */
+export interface CfR2CorsConfig {
+  rules: CfR2CorsRule[];
+}
+
+/** R2 自定义域 */
+export interface CfR2CustomDomain {
+  domain: string;
+  status: {
+    ssl: string;
+    ownership: string;
+  };
+  zoneId: string;
+  zoneName: string;
+  minTLS: string;
 }
 
 /** D1 数据库 */
