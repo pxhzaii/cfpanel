@@ -315,8 +315,36 @@ export async function listKvKeys(namespaceId: string, prefix?: string): Promise<
   });
 }
 
+/**
+ * 获取 KV 键值。
+ * KV API 返回纯文本/二进制 body（非 CF 标准 JSON 包装），不能用 proxy()。
+ * 对二进制内容（图片等）返回提示信息而非乱码。
+ */
 export async function getKvValue(namespaceId: string, key: string): Promise<string> {
-  return proxy<string>("GET", `${accountPrefix()}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
+  const pass = auth.pass;
+  const panelUser = auth.panelUser;
+  if (!pass || !panelUser) throw new ApiError(401, "未登录");
+  const res = await fetch(`/api/proxy/${accountPrefix()}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`, {
+    method: "GET",
+    headers: { "X-Panel-User": panelUser, "X-Panel-Pass": pass },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = `请求失败（HTTP ${res.status}）`;
+    try {
+      const data = JSON.parse(text);
+      msg = data.errors?.[0]?.message ?? data.error ?? msg;
+    } catch { /* 非 JSON 响应 */ }
+    throw new ApiError(res.status, msg);
+  }
+  const ct = res.headers.get("Content-Type") ?? "";
+  // 二进制内容（图片、octet-stream 等）无法当文本显示
+  if (ct.includes("octet-stream") || ct.includes("image/") || ct.includes("video/") || ct.includes("audio/")) {
+    const buf = await res.arrayBuffer();
+    const sizeKB = (buf.byteLength / 1024).toFixed(1);
+    return `（二进制内容，类型：${ct || "未知"}，大小：${sizeKB} KB，无法在文本中显示）`;
+  }
+  return await res.text();
 }
 
 export async function putKvValue(namespaceId: string, key: string, value: string): Promise<unknown> {
