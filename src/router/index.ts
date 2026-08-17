@@ -34,7 +34,7 @@ const router = createRouter({
 });
 
 router.beforeEach((to) => {
-  const loggedIn = !!auth.pass;
+  const loggedIn = !!auth.pass && !!auth.panelUser;
   if (to.name !== "login" && !loggedIn) return { name: "login" };
   if (to.name === "login" && loggedIn) return { name: "home" };
   return true;

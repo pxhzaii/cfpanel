@@ -4,19 +4,24 @@ import { useRouter } from "vue-router";
 import { login } from "../api/client";
 
 const router = useRouter();
+const username = ref("");
 const pass = ref("");
 const error = ref("");
 const loading = ref(false);
 
 async function onSubmit() {
+  if (!username.value.trim()) {
+    error.value = "请输入用户名";
+    return;
+  }
   if (!pass.value.trim()) {
-    error.value = "请输入访问口令";
+    error.value = "请输入密码";
     return;
   }
   loading.value = true;
   error.value = "";
   try {
-    await login(pass.value.trim());
+    await login(username.value.trim(), pass.value);
     router.replace("/");
   } catch (e) {
     error.value = (e as Error).message;
@@ -40,9 +45,17 @@ async function onSubmit() {
 
       <form @submit.prevent="onSubmit">
         <input
+          v-model="username"
+          type="text"
+          placeholder="用户名"
+          autocomplete="username"
+          autocapitalize="off"
+          autocorrect="off"
+        />
+        <input
           v-model="pass"
           type="password"
-          placeholder="访问口令"
+          placeholder="密码"
           autocomplete="current-password"
         />
         <p v-if="error" class="err">{{ error }}</p>
@@ -51,7 +64,7 @@ async function onSubmit() {
         </button>
       </form>
 
-      <p class="tip">口令在部署时通过环境变量 PANEL_PASSWORD 设置，仅自己使用。</p>
+      <p class="tip">用户名和密码在部署时通过环境变量 PANEL_USERS 设置（JSON 格式）。</p>
     </div>
   </div>
 </template>

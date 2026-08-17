@@ -36,7 +36,7 @@ function onLogout() {
         <span>CF Panel</span>
       </div>
       <div class="right">
-        <span class="user">{{ user?.email ?? user?.username ?? "未登录" }}</span>
+        <span class="user">{{ auth.panelUser || user?.email || user?.username || "未登录" }}</span>
         <button class="logout" @click="onLogout">退出</button>
       </div>
     </header>

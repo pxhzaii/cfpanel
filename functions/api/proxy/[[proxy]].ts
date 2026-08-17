@@ -23,6 +23,22 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/** 从环境变量解析用户列表 */
+function parseUsers(env: Environment): { username: string; password: string }[] {
+  // 优先使用 PANEL_USERS（新版多用户 JSON）
+  if (env.PANEL_USERS) {
+    try {
+      const users = JSON.parse(env.PANEL_USERS);
+      if (Array.isArray(users) && users.length > 0) return users;
+    } catch { /* JSON 解析失败，降级 */ }
+  }
+  // 向后兼容：旧版 PANEL_PASSWORD 单口令模式
+  if (env.PANEL_PASSWORD) {
+    return [{ username: "admin", password: env.PANEL_PASSWORD }];
+  }
+  return [];
+}
+
 export const onRequest: ApiFunction = async ({ request, env, params }) => {
   // 1. 服务端配置检查
   if (!env.CF_API_TOKEN) {
@@ -32,10 +48,19 @@ export const onRequest: ApiFunction = async ({ request, env, params }) => {
     );
   }
 
-  // 2. 访问口令校验（每个请求都校验，会话过期即失效）
-  const pass = request.headers.get("X-Panel-Pass") ?? "";
-  if (!env.PANEL_PASSWORD || !safeEqual(pass, env.PANEL_PASSWORD)) {
-    return json({ success: false, error: "访问口令错误，请重新登录。" }, 401);
+  // 2. 账户+密码校验（每个请求都校验）
+  const users = parseUsers(env);
+  if (users.length === 0) {
+    return json({ success: false, error: "服务端未配置面板用户，请设置 PANEL_USERS 环境变量。" }, 500);
+  }
+  const reqUser = request.headers.get("X-Panel-User") ?? "";
+  const reqPass = request.headers.get("X-Panel-Pass") ?? "";
+  if (!reqUser || !reqPass) {
+    return json({ success: false, error: "请先登录。" }, 401);
+  }
+  const matched = users.find((u) => safeEqual(reqUser, u.username) && safeEqual(reqPass, u.password));
+  if (!matched) {
+    return json({ success: false, error: "用户名或密码错误，请重新登录。" }, 401);
   }
 
   // 3. 拼装目标地址

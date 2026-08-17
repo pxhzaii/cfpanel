@@ -1,6 +1,7 @@
 /**
  * API 客户端：所有请求都经过 /api/proxy/ 代理，
- * 访问口令通过请求头 X-Panel-Pass 传递，CF_API_TOKEN 始终留在服务端。
+ * 用户名通过请求头 X-Panel-User 传递，密码通过 X-Panel-Pass 传递，
+ * CF_API_TOKEN 始终留在服务端。
  */
 import type {
   CfResponse,
@@ -36,6 +37,7 @@ const PASS_KEY = "cfpanel_pass";
 const USER_KEY = "cfpanel_user";
 const ZONES_KEY = "cfpanel_zones";
 const ACCOUNT_KEY = "cfpanel_account";
+const PANEL_USER_KEY = "cfpanel_panel_user";
 
 export const auth = {
   get pass(): string | null {
@@ -44,8 +46,15 @@ export const auth = {
   set pass(v: string) {
     localStorage.setItem(PASS_KEY, v);
   },
+  get panelUser(): string {
+    return localStorage.getItem(PANEL_USER_KEY) ?? "";
+  },
+  set panelUser(v: string) {
+    localStorage.setItem(PANEL_USER_KEY, v);
+  },
   clear() {
     localStorage.removeItem(PASS_KEY);
+    localStorage.removeItem(PANEL_USER_KEY);
   },
   get user(): CfUser | null {
     const raw = localStorage.getItem(USER_KEY);
@@ -114,13 +123,15 @@ async function handle<T>(res: Response): Promise<T> {
 
 /** 通用代理请求 */
 async function proxy<T>(method: string, path: string, body?: unknown, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
-  const token = auth.pass;
-  if (!token) throw new ApiError(401, "未登录");
+  const pass = auth.pass;
+  const panelUser = auth.panelUser;
+  if (!pass || !panelUser) throw new ApiError(401, "未登录");
   const res = await fetch(`/api/proxy/${path}${qs(params)}`, {
     method,
     headers: {
       "Content-Type": "application/json",
-      "X-Panel-Pass": token,
+      "X-Panel-User": panelUser,
+      "X-Panel-Pass": pass,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -129,22 +140,23 @@ async function proxy<T>(method: string, path: string, body?: unknown, params?: R
 
 // ---------------- 账号与登录 ----------------
 
-export async function login(pass: string): Promise<CfUser> {
-  // 用 accounts 端点验证口令+Token 有效性（兼容帐户级 API Token，user/tokens/verify 需用户级 Token）
+export async function login(username: string, pass: string): Promise<CfUser> {
+  // 用 accounts 端点验证用户名+密码+Token 有效性
   const res = await fetch("/api/proxy/accounts", {
     method: "GET",
-    headers: { "X-Panel-Pass": pass },
+    headers: { "X-Panel-User": username, "X-Panel-Pass": pass },
   });
   const accounts = await handle<CfAccount[]>(res);
   auth.pass = pass;
+  auth.panelUser = username;
   let accountId = "";
-  let accountName = "CF Panel 用户";
+  let accountName = username;
   if (accounts && accounts.length > 0) {
     accountId = accounts[0].id;
     accountName = accounts[0].name;
   }
   auth.accountId = accountId;
-  const user: CfUser = { id: accountId, email: accountName, username: accountName };
+  const user: CfUser = { id: accountId, email: accountName, username: username };
   auth.user = user;
   return user;
 }
@@ -208,7 +220,7 @@ export async function getWorkerScript(scriptName: string): Promise<string> {
   // 为避免大文件（可能 5MB+）撑爆手机浏览器，只读前 100000 字节
   const res = await fetch(`/api/proxy/${accountPrefix()}/workers/scripts/${scriptName}/content/v2`, {
     method: "GET",
-    headers: { "Content-Type": "application/json", "X-Panel-Pass": auth.pass ?? "" },
+    headers: { "Content-Type": "application/json", "X-Panel-User": auth.panelUser, "X-Panel-Pass": auth.pass ?? "" },
   });
 
   if (!res.ok) {
@@ -310,11 +322,13 @@ export async function putKvValue(namespaceId: string, key: string, value: string
   // CF KV API 要求值放在请求 body 中（纯文本），而非 query param
   // 不能用 proxy() 因为它会 JSON.stringify，KV 值需原样发送
   const token = auth.pass;
-  if (!token) throw new ApiError(401, "未登录");
+  const panelUser = auth.panelUser;
+  if (!token || !panelUser) throw new ApiError(401, "未登录");
   const res = await fetch(`/api/proxy/${accountPrefix()}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`, {
     method: "PUT",
     headers: {
       "Content-Type": "text/plain",
+      "X-Panel-User": panelUser,
       "X-Panel-Pass": token,
     },
     body: value,
@@ -369,7 +383,7 @@ export async function listR2Objects(bucketName: string, params?: { cursor?: stri
   if (params?.prefix) q.prefix = params.prefix;
   const res = await fetch(`/api/proxy/${accountPrefix()}/r2/buckets/${bucketName}/objects?${new URLSearchParams(q as Record<string, string>).toString()}`, {
     method: "GET",
-    headers: { "Content-Type": "application/json", "X-Panel-Pass": auth.pass ?? "" },
+    headers: { "Content-Type": "application/json", "X-Panel-User": auth.panelUser, "X-Panel-Pass": auth.pass ?? "" },
   });
   const data = await res.json() as CfResponse<CfR2Object[]>;
   if (!res.ok || !data.success) {
@@ -383,12 +397,14 @@ export async function listR2Objects(bucketName: string, params?: { cursor?: stri
 /** R2 上传对象（直接发送原始二进制 body） */
 export async function putR2Object(bucketName: string, key: string, rawBody: BodyInit, contentType?: string): Promise<unknown> {
   const token = auth.pass;
-  if (!token) throw new ApiError(401, "未登录");
+  const panelUser = auth.panelUser;
+  if (!token || !panelUser) throw new ApiError(401, "未登录");
   const ct = contentType || "application/octet-stream";
   const res = await fetch(`/api/proxy/${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`, {
     method: "PUT",
     headers: {
       "Content-Type": ct,
+      "X-Panel-User": panelUser,
       "X-Panel-Pass": token,
     },
     body: rawBody,
@@ -399,10 +415,11 @@ export async function putR2Object(bucketName: string, key: string, rawBody: Body
 /** R2 获取对象内容（可能返回 JSON{base64} 或原始二进制，需兼容处理） */
 export async function getR2Object(bucketName: string, key: string): Promise<CfR2ObjectContent> {
   const token = auth.pass;
-  if (!token) throw new ApiError(401, "未登录");
+  const panelUser = auth.panelUser;
+  if (!token || !panelUser) throw new ApiError(401, "未登录");
   const res = await fetch(`/api/proxy/${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`, {
     method: "GET",
-    headers: { "Content-Type": "application/json", "X-Panel-Pass": token },
+    headers: { "Content-Type": "application/json", "X-Panel-User": panelUser, "X-Panel-Pass": token },
   });
   if (!res.ok) {
     // 尝试解析错误信息
@@ -581,7 +598,8 @@ export async function listWorkerBindings(scriptName: string): Promise<CfWorkerBi
  */
 export async function createWorkerScript(params: CreateWorkerScriptParams): Promise<unknown> {
   const token = auth.pass;
-  if (!token) throw new ApiError(401, "未登录");
+  const panelUser = auth.panelUser;
+  if (!token || !panelUser) throw new ApiError(401, "未登录");
 
   const metadata: Record<string, unknown> = {
     bindings: [] as CfWorkerBinding[],
@@ -614,7 +632,7 @@ export async function createWorkerScript(params: CreateWorkerScriptParams): Prom
 
   const res = await fetch(`/api/proxy/${accountPrefix()}/workers/scripts/${params.name}`, {
     method: "PUT",
-    headers: { "X-Panel-Pass": token },
+    headers: { "X-Panel-User": panelUser, "X-Panel-Pass": token },
     body: formData,
   });
   return handle<unknown>(res);
