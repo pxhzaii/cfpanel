@@ -77,9 +77,12 @@ function openAdd() {
 
 function openEdit(r: CfDnsRecord) {
   editing.value = r;
+  const zoneName = currentZone.value?.name ?? "";
   form.value = {
     type: r.type,
-    name: r.name.replace(/\.${currentZone.value?.name ?? ""}$/i, ""),
+    name: zoneName && r.name.toLowerCase().endsWith("." + zoneName.toLowerCase())
+      ? r.name.slice(0, -(zoneName.length + 1))
+      : r.name,
     content: r.content,
     ttl: r.ttl === 1 ? 1 : r.ttl,
     proxied: r.proxied,

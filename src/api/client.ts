@@ -23,6 +23,7 @@ import type {
 const PASS_KEY = "cfpanel_pass";
 const USER_KEY = "cfpanel_user";
 const ZONES_KEY = "cfpanel_zones";
+const ACCOUNT_KEY = "cfpanel_account";
 
 export const auth = {
   get pass(): string | null {
@@ -53,6 +54,12 @@ export const auth = {
   },
   clearZones() {
     localStorage.removeItem(ZONES_KEY);
+  },
+  get accountId(): string {
+    return localStorage.getItem(ACCOUNT_KEY) ?? "";
+  },
+  set accountId(v: string) {
+    localStorage.setItem(ACCOUNT_KEY, v);
   },
 };
 
@@ -115,8 +122,23 @@ export async function login(pass: string): Promise<CfUser> {
     method: "GET",
     headers: { "X-Panel-Pass": pass },
   });
-  const user = await handle<CfUser>(res);
+  // 只校验口令是否有效（不解析 result 细节，避免 Token 类型差异导致解析失败）
+  await handle<unknown>(res);
   auth.pass = pass;
+  // 获取真实 Account ID 并缓存，后续所有 account 级 API 都基于它拼接
+  let accountId = "";
+  let accountName = "CF Panel 用户";
+  try {
+    const accounts = await proxy<CfAccount[]>("GET", "accounts");
+    if (accounts.length > 0) {
+      accountId = accounts[0].id;
+      accountName = accounts[0].name;
+    }
+  } catch {
+    // 无 accounts 权限时静默忽略，accountId 保持为空，相关功能会提示无权限
+  }
+  auth.accountId = accountId;
+  const user: CfUser = { id: accountId, email: accountName, username: accountName };
   auth.user = user;
   return user;
 }
@@ -125,6 +147,7 @@ export function logout() {
   auth.clear();
   auth.clearUser();
   auth.clearZones();
+  localStorage.removeItem(ACCOUNT_KEY);
 }
 
 // ---------------- 域名 / DNS ----------------
@@ -157,66 +180,73 @@ export async function deleteDnsRecord(zoneId: string, recordId: string): Promise
   return proxy("DELETE", `zones/${zoneId}/dns_records/${recordId}`);
 }
 
+/** account 级 API 前缀（登录时自动获取真实 Account ID） */
+function accountPrefix(): string {
+  const id = auth.accountId;
+  if (!id) throw new ApiError(401, "未获取到 Account ID，请退出重新登录");
+  return `accounts/${id}`;
+}
+
 // ---------------- Workers ----------------
 
 export async function listWorkers(params?: PageParams): Promise<CfWorkerScript[]> {
-  return proxy<CfWorkerScript[]>("GET", "accounts/self/workers/scripts", undefined, {
+  return proxy<CfWorkerScript[]>("GET", `${accountPrefix()}/workers/scripts`, undefined, {
     ...params,
     "per_page": 50,
   });
 }
 
 export async function getWorkerScript(scriptName: string): Promise<string> {
-  return proxy<string>("GET", `accounts/self/workers/scripts/${scriptName}/content`);
+  return proxy<string>("GET", `${accountPrefix()}/workers/scripts/${scriptName}/content`);
 }
 
 // ---------------- Pages ----------------
 
 export async function listPagesProjects(params?: PageParams): Promise<CfPagesProject[]> {
-  return proxy<CfPagesProject[]>("GET", "accounts/self/pages/projects", undefined, {
+  return proxy<CfPagesProject[]>("GET", `${accountPrefix()}/pages/projects`, undefined, {
     ...params,
     "per_page": 50,
   });
 }
 
 export async function listPagesDeployments(projectName: string): Promise<CfPagesDeployment[]> {
-  return proxy<CfPagesDeployment[]>("GET", `accounts/self/pages/projects/${projectName}/deployments`);
+  return proxy<CfPagesDeployment[]>("GET", `${accountPrefix()}/pages/projects/${projectName}/deployments`);
 }
 
 // ---------------- KV ----------------
 
 export async function listKvNamespaces(params?: PageParams): Promise<CfKvNamespace[]> {
-  return proxy<CfKvNamespace[]>("GET", "accounts/self/storage/kv/namespaces", undefined, {
+  return proxy<CfKvNamespace[]>("GET", `${accountPrefix()}/storage/kv/namespaces`, undefined, {
     ...params,
     "per_page": 50,
   });
 }
 
 export async function listKvKeys(namespaceId: string, prefix?: string): Promise<CfKvKey[]> {
-  return proxy<CfKvKey[]>("GET", `accounts/self/storage/kv/namespaces/${namespaceId}/keys`, undefined, {
+  return proxy<CfKvKey[]>("GET", `${accountPrefix()}/storage/kv/namespaces/${namespaceId}/keys`, undefined, {
     prefix: prefix ?? undefined,
     "per_page": 100,
   });
 }
 
 export async function getKvValue(namespaceId: string, key: string): Promise<string> {
-  return proxy<string>("GET", `accounts/self/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
+  return proxy<string>("GET", `${accountPrefix()}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
 }
 
 export async function putKvValue(namespaceId: string, key: string, value: string): Promise<unknown> {
-  return proxy("PUT", `accounts/self/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`, undefined, {
+  return proxy("PUT", `${accountPrefix()}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`, undefined, {
     value,
   });
 }
 
 export async function deleteKvKey(namespaceId: string, key: string): Promise<unknown> {
-  return proxy("DELETE", `accounts/self/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
+  return proxy("DELETE", `${accountPrefix()}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
 }
 
 // ---------------- R2 ----------------
 
 export async function listR2Buckets(params?: PageParams): Promise<CfR2Bucket[]> {
-  return proxy<CfR2Bucket[]>("GET", "accounts/self/r2/buckets", undefined, {
+  return proxy<CfR2Bucket[]>("GET", `${accountPrefix()}/r2/buckets`, undefined, {
     ...params,
     "per_page": 50,
   });
@@ -225,11 +255,11 @@ export async function listR2Buckets(params?: PageParams): Promise<CfR2Bucket[]> 
 // ---------------- D1 ----------------
 
 export async function listD1Databases(): Promise<CfD1Database[]> {
-  return proxy<CfD1Database[]>("GET", "accounts/self/d1/database");
+  return proxy<CfD1Database[]>("GET", `${accountPrefix()}/d1/database`);
 }
 
 export async function runD1Query(databaseId: string, sql: string): Promise<CfD1QueryResult> {
-  return proxy<CfD1QueryResult>("POST", `accounts/self/d1/database/${databaseId}/query`, { sql });
+  return proxy<CfD1QueryResult>("POST", `${accountPrefix()}/d1/database/${databaseId}/query`, { sql });
 }
 
 // ---------------- 账号信息 ----------------
