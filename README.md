@@ -1,17 +1,7 @@
----
-AIGC:
-  ContentProducer: '001191110102MAD55U9H0F10002'
-  ContentPropagator: '001191110102MAD55U9H0F10002'
-  Label: '1'
-  ProduceID: '161e1eff-df17-4db9-817d-e763ecf0a90b'
-  PropagateID: '161e1eff-df17-4db9-817d-e763ecf0a90b'
-  ReservedCode1: '61c9e34f-460b-4ef8-ae4d-27d3447c5f25'
-  ReservedCode2: '61c9e34f-460b-4ef8-ae4d-27d3447c5f25'
----
 
 # CF Panel
 
-手机端 Cloudflare 管理面板，部署在 Cloudflare Pages（含 Pages Functions）。
+Cloudflare 管理面板 -浏览器端  部署在cloudflare的pages上
 
 用浏览器（尤其手机）就能管理：
 
