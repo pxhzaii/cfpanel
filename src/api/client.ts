@@ -126,24 +126,18 @@ async function proxy<T>(method: string, path: string, body?: unknown, params?: R
 // ---------------- 账号与登录 ----------------
 
 export async function login(pass: string): Promise<CfUser> {
-  const res = await fetch("/api/proxy/user/tokens/verify", {
+  // 用 accounts 端点验证口令+Token 有效性（兼容帐户级 API Token，user/tokens/verify 需用户级 Token）
+  const res = await fetch("/api/proxy/accounts", {
     method: "GET",
     headers: { "X-Panel-Pass": pass },
   });
-  // 只校验口令是否有效（不解析 result 细节，避免 Token 类型差异导致解析失败）
-  await handle<unknown>(res);
+  const accounts = await handle<CfAccount[]>(res);
   auth.pass = pass;
-  // 获取真实 Account ID 并缓存，后续所有 account 级 API 都基于它拼接
   let accountId = "";
   let accountName = "CF Panel 用户";
-  try {
-    const accounts = await proxy<CfAccount[]>("GET", "accounts");
-    if (accounts.length > 0) {
-      accountId = accounts[0].id;
-      accountName = accounts[0].name;
-    }
-  } catch {
-    // 无 accounts 权限时静默忽略，accountId 保持为空，相关功能会提示无权限
+  if (accounts && accounts.length > 0) {
+    accountId = accounts[0].id;
+    accountName = accounts[0].name;
   }
   auth.accountId = accountId;
   const user: CfUser = { id: accountId, email: accountName, username: accountName };
