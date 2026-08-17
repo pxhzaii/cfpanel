@@ -281,19 +281,44 @@ async function loadR2() {
 }
 
 async function createR2() {
-  if (!newR2Name.value.trim()) {
+  const name = newR2Name.value.trim();
+  if (!name) {
     error.value = "请输入存储桶名称";
+    return;
+  }
+  // R2 存储桶名称规则：1-63 字符，仅小写字母/数字/连字符，须以字母或数字开头结尾
+  if (name.length < 3) {
+    error.value = "存储桶名称至少 3 个字符";
+    return;
+  }
+  if (name.length > 63) {
+    error.value = "存储桶名称不能超过 63 个字符";
+    return;
+  }
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name)) {
+    error.value = "名称只能包含小写字母、数字和连字符，且须以字母或数字开头和结尾";
+    return;
+  }
+  if (name.includes("--")) {
+    error.value = "名称不能包含连续的连字符";
     return;
   }
   error.value = "";
   try {
-    await createR2Bucket(newR2Name.value.trim(), newR2Location.value || undefined);
+    await createR2Bucket(name, newR2Location.value || undefined);
     newR2Name.value = "";
     newR2Location.value = "";
     showCreateR2.value = false;
     await loadR2();
   } catch (e) {
-    error.value = (e as Error).message;
+    const msg = (e as Error).message;
+    if (msg.includes("not valid") || msg.includes("bucket name")) {
+      error.value = "存储桶名称不合法：只能包含小写字母、数字和连字符，长度 3-63";
+    } else if (msg.includes("already") || msg.includes("exists")) {
+      error.value = "该名称已被占用，请换一个";
+    } else {
+      error.value = msg;
+    }
   }
 }
 
