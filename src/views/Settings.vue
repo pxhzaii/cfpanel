@@ -43,15 +43,15 @@ onMounted(load);
     <section class="card">
       <h3>账号</h3>
       <div class="row">
-        <span class="k">名称</span>
-        <span class="v">{{ user?.name ?? "-" }}</span>
+        <span class="k">邮箱</span>
+        <span class="v">{{ user?.email ?? "-" }}</span>
       </div>
       <div class="row">
-        <span class="k">类型</span>
-        <span class="v">{{ user?.type ?? "-" }}</span>
+        <span class="k">用户名</span>
+        <span class="v">{{ user?.username ?? "-" }}</span>
       </div>
       <div class="row">
-        <span class="k">账号 ID</span>
+        <span class="k">用户 ID</span>
         <span class="v mono">{{ user?.id ?? "-" }}</span>
       </div>
     </section>

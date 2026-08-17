@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '14efce88-49f0-48da-b865-0dada354c6ea'
-  PropagateID: '14efce88-49f0-48da-b865-0dada354c6ea'
-  ReservedCode1: '5311acee-af83-4014-9509-8ba2d4863f62'
-  ReservedCode2: '5311acee-af83-4014-9509-8ba2d4863f62'
+  ProduceID: 'a53e1857-278d-4a27-8173-81805eab5557'
+  PropagateID: 'a53e1857-278d-4a27-8173-81805eab5557'
+  ReservedCode1: 'd82e4708-6b07-4ea9-8687-2dcf347f56ff'
+  ReservedCode2: 'd82e4708-6b07-4ea9-8687-2dcf347f56ff'
 ---
 
 # CF Panel
@@ -23,90 +23,17 @@ AIGC:
 ## 安全设计
 
 - 面板有独立**访问口令**（`PANEL_PASSWORD`），每个 API 请求都会校验，口令只存在浏览器 localStorage
-- **CF API 凭证**（API Token 或 Global API Key）只存在服务端环境变量，经 `/api/proxy/` 转发调用 Cloudflare API，**绝不下发到浏览器**
-- 页面无任何 Token/Key 输入框，凭证泄露面小
-
-## 快速部署（3 分钟，零代码）
-
-### 第 1 步：Fork 仓库
-
-点击 [https://github.com/pxhzaii/cfpanel/fork](https://github.com/pxhzaii/cfpanel/fork)，把仓库 Fork 到你自己的 GitHub 账号下。
-
-### 第 2 步：准备 Cloudflare API 凭证
-
-两种方式任选其一：
-
-**方式一：API Token（推荐，最小权限）**
-
-1. 打开 [API Tokens 页面](https://dash.cloudflare.com/profile/api-tokens)
-2. 点 **Create Token**
-3. 选 **Create Custom Token** 或使用模板，按下方权限表勾选
-
-**方式二：Global API Key（全权限，简单）**
-
-1. 打开 [API Tokens 页面](https://dash.cloudflare.com/profile/api-tokens)
-2. 页面底部找到 **Global API Key**，点 **View** 查看
-3. 记下你的邮箱和 Key
-
-### 第 3 步：部署到 Cloudflare Pages
-
-1. 打开 [Cloudflare Dashboard](https://dash.cloudflare.com/) → Workers & Pages → Create → Pages
-2. 选 **Connect to Git**，授权并选择你 Fork 的 `cfpanel` 仓库
-3. 构建配置：
-   - 构建命令：`npm run build`
-   - 输出目录：`dist`
-   - Node 版本：20 或以上
-4. 展开高级设置 → 添加环境变量：
-
-   **方式一（API Token）：**
-
-   | 变量名 | 值 |
-   | --- | --- |
-   | `PANEL_PASSWORD` | 你自定义的访问口令（强口令） |
-   | `CF_API_TOKEN` | 第 2 步创建的 Token |
-
-   **方式二（Global API Key）：**
-
-   | 变量名 | 值 |
-   | --- | --- |
-   | `PANEL_PASSWORD` | 你自定义的访问口令（强口令） |
-   | `CF_API_EMAIL` | 你的 Cloudflare 账号邮箱 |
-   | `CF_API_KEY` | Global API Key |
-
-5. 保存并部署，等待构建完成（约 1-2 分钟）
-
-### 第 4 步：使用
-
-用手机浏览器打开 Cloudflare 分配的域名（如 `cfpanel-xxx.pages.dev`），输入你设的 `PANEL_PASSWORD` 口令即可使用。
-
-> Account ID 不需要手动设置——登录时面板会自动从 Cloudflare API 获取你的 Account ID 并缓存。
-
-建议在 Pages 项目设置中绑定自定义域名。
-
----
+- **Cloudflare API Token**（`CF_API_TOKEN`）只存在服务端环境变量，经 `/api/proxy/` 转发调用 Cloudflare API，**绝不下发到浏览器**
+- 页面无任何 Token 输入框，Token 泄露面小
 
 ## 环境变量
 
-在 Cloudflare Pages 项目 **设置 → 环境变量** 中配置（生产环境建议同时配置到 Production 与 Preview）。
-
-支持两种认证方式（二选一）：
-
-**方式一：API Token（推荐）**
+在 Cloudflare Pages 项目 **设置 → 环境变量** 中配置（生产环境建议同时配置到 Production 与 Preview）：
 
 | 变量名 | 必填 | 说明 |
 | --- | --- | --- |
 | `PANEL_PASSWORD` | 是 | 访问面板的口令，请用强口令 |
 | `CF_API_TOKEN` | 是 | Cloudflare API Token，权限见下表 |
-
-**方式二：Global API Key（全权限）**
-
-| 变量名 | 必填 | 说明 |
-| --- | --- | --- |
-| `PANEL_PASSWORD` | 是 | 访问面板的口令，请用强口令 |
-| `CF_API_EMAIL` | 是 | Cloudflare 账号邮箱 |
-| `CF_API_KEY` | 是 | Global API Key |
-
-> 同时配置两种方式时，优先使用 API Token。
 
 ## API Token 权限
 
@@ -120,7 +47,8 @@ AIGC:
 | Account | Workers KV Storage → Edit | All accounts |
 | Account | Workers R2 Storage → Read | All accounts |
 | Account | D1 → Edit | All accounts |
-| Account | Cloudflare Pages → Read | All accounts |
+| Account | Pages → Read | All accounts |
+| Account | Cloudflare Pages → Edit | All accounts |
 
 > 只想要 DNS 的话，最小权限就是 Zone Zone/DNS Edit；要玩 KV 就加 Workers KV Storage Edit；R2 只读、D1 只读/执行按需。
 
@@ -144,6 +72,28 @@ npx wrangler pages dev dist
 
 打开输出的本地地址即可，登录口令就是 `PANEL_PASSWORD` 的值。
 
+## 部署到 Cloudflare Pages
+
+方式一：**Wrangler CLI**（本机执行）
+
+```bash
+npm run build
+npx wrangler pages deploy dist --project-name cfpanel
+```
+
+方式二：**Git 集成**（推荐，跟其他项目一致）
+
+1. 把本项目推到 GitHub
+2. Cloudflare Dashboard → Workers & Pages → Create → Pages → 连接 Git 仓库
+3. 构建配置：
+   - 构建命令：`npm run build`
+   - 输出目录：`dist`
+   - Node 版本：20 或以上
+4. 在 **设置 → 环境变量** 添加 `PANEL_PASSWORD` 和 `CF_API_TOKEN`
+5. 保存后触发首次部署
+
+部署完成后用手机浏览器打开 Pages 域名（如 `cfpanel.pages.dev`），输入口令即可使用。建议顺手在 Cloudflare 控制台把 Pages 项目绑定你的自定义域名（如 `cf.5as.cn`）。
+
 ## 技术栈
 
 - Vue 3 + Vite + TypeScript（Vue Router）
@@ -152,7 +102,7 @@ npx wrangler pages dev dist
 
 ## 说明
 
-- API Token 泄漏风险由 Token 本身权限决定，建议按最小权限创建；Global API Key 拥有全部权限，请注意保管
+- API Token 泄漏风险由 Token 本身权限决定，建议按最小权限创建
 - 面板仅提供浏览器端管理，不做 OAuth 登录（保持简单、无第三方依赖）
 - 手机上也可以把面板网址“添加到主屏幕”当作 App 使用
 

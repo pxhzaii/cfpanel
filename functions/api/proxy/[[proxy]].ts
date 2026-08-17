@@ -24,12 +24,10 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 export const onRequest: ApiFunction = async ({ request, env, params }) => {
-  // 1. 服务端配置检查（支持 API Token 或 Global API Key 两种方式）
-  const hasToken = !!env.CF_API_TOKEN;
-  const hasGlobalKey = !!(env.CF_API_EMAIL && env.CF_API_KEY);
-  if (!hasToken && !hasGlobalKey) {
+  // 1. 服务端配置检查
+  if (!env.CF_API_TOKEN) {
     return json(
-      { success: false, error: "服务端未配置 CF API 凭证，请配置 CF_API_TOKEN（方式一）或 CF_API_EMAIL + CF_API_KEY（方式二）后重新部署。" },
+      { success: false, error: "服务端未配置 CF_API_TOKEN，请在 Cloudflare Pages 设置环境变量后重新部署。" },
       500
     );
   }
@@ -57,15 +55,8 @@ export const onRequest: ApiFunction = async ({ request, env, params }) => {
   }
 
   const headers = new Headers();
+  headers.set("Authorization", `Bearer ${env.CF_API_TOKEN}`);
   headers.set("Content-Type", "application/json");
-  if (hasToken) {
-    // 方式一：API Token（Bearer 认证）
-    headers.set("Authorization", `Bearer ${env.CF_API_TOKEN}`);
-  } else {
-    // 方式二：Global API Key（X-Auth-Email + X-Auth-Key）
-    headers.set("X-Auth-Email", env.CF_API_EMAIL!);
-    headers.set("X-Auth-Key", env.CF_API_KEY!);
-  }
 
   let body: string | undefined;
   if (method !== "GET" && method !== "HEAD") {

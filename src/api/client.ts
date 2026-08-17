@@ -23,7 +23,6 @@ import type {
 const PASS_KEY = "cfpanel_pass";
 const USER_KEY = "cfpanel_user";
 const ZONES_KEY = "cfpanel_zones";
-const ACCT_KEY = "cfpanel_acct_id";
 
 export const auth = {
   get pass(): string | null {
@@ -54,15 +53,6 @@ export const auth = {
   },
   clearZones() {
     localStorage.removeItem(ZONES_KEY);
-  },
-  get acctId(): string | null {
-    return localStorage.getItem(ACCT_KEY);
-  },
-  set acctId(v: string) {
-    localStorage.setItem(ACCT_KEY, v);
-  },
-  clearAcctId() {
-    localStorage.removeItem(ACCT_KEY);
   },
 };
 
@@ -121,29 +111,20 @@ async function proxy<T>(method: string, path: string, body?: unknown, params?: R
 // ---------------- 账号与登录 ----------------
 
 export async function login(pass: string): Promise<CfUser> {
-  // 用 accounts 端点验证 Token 有效性（兼容帐户级 Token）
-  const res = await fetch("/api/proxy/accounts", {
+  const res = await fetch("/api/proxy/user/tokens/verify", {
     method: "GET",
     headers: { "X-Panel-Pass": pass },
   });
-  const accounts = await handle<CfAccount[]>(res);
+  const user = await handle<CfUser>(res);
   auth.pass = pass;
-  // 从第一个 account 提取用户信息，并保存 account ID
-  const acct = accounts[0];
-  auth.user = {
-    id: acct?.id ?? "",
-    name: acct?.name ?? "",
-    type: acct?.type,
-  };
-  if (acct?.id) auth.acctId = acct.id;
-  return auth.user;
+  auth.user = user;
+  return user;
 }
 
 export function logout() {
   auth.clear();
   auth.clearUser();
   auth.clearZones();
-  auth.clearAcctId();
 }
 
 // ---------------- 域名 / DNS ----------------
@@ -176,82 +157,66 @@ export async function deleteDnsRecord(zoneId: string, recordId: string): Promise
   return proxy("DELETE", `zones/${zoneId}/dns_records/${recordId}`);
 }
 
-/** 获取 account ID，优先用缓存，没有则从 API 拉取 */
-async function getAcctId(): Promise<string> {
-  if (auth.acctId) return auth.acctId;
-  const accounts = await listAccounts();
-  if (accounts.length === 0) throw new ApiError(404, "未找到 Cloudflare 账号");
-  auth.acctId = accounts[0].id;
-  return accounts[0].id;
-}
-
 // ---------------- Workers ----------------
 
 export async function listWorkers(params?: PageParams): Promise<CfWorkerScript[]> {
-  const acctId = await getAcctId();
-  return proxy<CfWorkerScript[]>("GET", `accounts/${acctId}/workers/scripts`, undefined, {
+  return proxy<CfWorkerScript[]>("GET", "accounts/self/workers/scripts", undefined, {
     ...params,
     "per_page": 50,
   });
 }
 
 export async function getWorkerScript(scriptName: string): Promise<string> {
-  const acctId = await getAcctId();
-  return proxy<string>("GET", `accounts/${acctId}/workers/scripts/${scriptName}/content`);
+  return proxy<string>("GET", `accounts/self/workers/scripts/${scriptName}/content`);
 }
 
 // ---------------- Pages ----------------
 
-export async function listPagesProjects(): Promise<CfPagesProject[]> {
-  const acctId = await getAcctId();
-  return proxy<CfPagesProject[]>("GET", `accounts/${acctId}/pages/projects`);
+export async function listPagesProjects(params?: PageParams): Promise<CfPagesProject[]> {
+  return proxy<CfPagesProject[]>("GET", "accounts/self/pages/projects", undefined, {
+    ...params,
+    "per_page": 50,
+  });
 }
 
 export async function listPagesDeployments(projectName: string): Promise<CfPagesDeployment[]> {
-  const acctId = await getAcctId();
-  return proxy<CfPagesDeployment[]>("GET", `accounts/${acctId}/pages/projects/${projectName}/deployments`);
+  return proxy<CfPagesDeployment[]>("GET", `accounts/self/pages/projects/${projectName}/deployments`);
 }
 
 // ---------------- KV ----------------
 
 export async function listKvNamespaces(params?: PageParams): Promise<CfKvNamespace[]> {
-  const acctId = await getAcctId();
-  return proxy<CfKvNamespace[]>("GET", `accounts/${acctId}/storage/kv/namespaces`, undefined, {
+  return proxy<CfKvNamespace[]>("GET", "accounts/self/storage/kv/namespaces", undefined, {
     ...params,
     "per_page": 50,
   });
 }
 
 export async function listKvKeys(namespaceId: string, prefix?: string): Promise<CfKvKey[]> {
-  const acctId = await getAcctId();
-  return proxy<CfKvKey[]>("GET", `accounts/${acctId}/storage/kv/namespaces/${namespaceId}/keys`, undefined, {
+  return proxy<CfKvKey[]>("GET", `accounts/self/storage/kv/namespaces/${namespaceId}/keys`, undefined, {
     prefix: prefix ?? undefined,
     "per_page": 100,
   });
 }
 
 export async function getKvValue(namespaceId: string, key: string): Promise<string> {
-  const acctId = await getAcctId();
-  return proxy<string>("GET", `accounts/${acctId}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
+  return proxy<string>("GET", `accounts/self/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
 }
 
 export async function putKvValue(namespaceId: string, key: string, value: string): Promise<unknown> {
-  const acctId = await getAcctId();
-  return proxy("PUT", `accounts/${acctId}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`, undefined, {
+  return proxy("PUT", `accounts/self/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`, undefined, {
     value,
   });
 }
 
 export async function deleteKvKey(namespaceId: string, key: string): Promise<unknown> {
-  const acctId = await getAcctId();
-  return proxy("DELETE", `accounts/${acctId}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
+  return proxy("DELETE", `accounts/self/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`);
 }
 
 // ---------------- R2 ----------------
 
 export async function listR2Buckets(params?: PageParams): Promise<CfR2Bucket[]> {
-  const acctId = await getAcctId();
-  return proxy<CfR2Bucket[]>("GET", `accounts/${acctId}/r2/buckets`, undefined, {
+  return proxy<CfR2Bucket[]>("GET", "accounts/self/r2/buckets", undefined, {
     ...params,
     "per_page": 50,
   });
@@ -260,13 +225,11 @@ export async function listR2Buckets(params?: PageParams): Promise<CfR2Bucket[]> 
 // ---------------- D1 ----------------
 
 export async function listD1Databases(): Promise<CfD1Database[]> {
-  const acctId = await getAcctId();
-  return proxy<CfD1Database[]>("GET", `accounts/${acctId}/d1/database`);
+  return proxy<CfD1Database[]>("GET", "accounts/self/d1/database");
 }
 
 export async function runD1Query(databaseId: string, sql: string): Promise<CfD1QueryResult> {
-  const acctId = await getAcctId();
-  return proxy<CfD1QueryResult>("POST", `accounts/${acctId}/d1/database/${databaseId}/query`, { sql });
+  return proxy<CfD1QueryResult>("POST", `accounts/self/d1/database/${databaseId}/query`, { sql });
 }
 
 // ---------------- 账号信息 ----------------
