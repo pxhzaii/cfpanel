@@ -344,8 +344,11 @@ export async function getR2Bucket(name: string): Promise<CfR2BucketDetail> {
 }
 
 /** R2 对象列表 */
-export async function listR2Objects(bucketName: string, params?: { cursor?: string; per_page?: number }): Promise<{ result: CfR2Object[]; cursor?: string }> {
-  const res = await fetch(`/api/proxy/${accountPrefix()}/r2/buckets/${bucketName}/objects${qs({ per_page: params?.per_page ?? 100, cursor: params?.cursor })}`, {
+export async function listR2Objects(bucketName: string, params?: { cursor?: string; per_page?: number; prefix?: string }): Promise<{ result: CfR2Object[]; cursor?: string }> {
+  const q: Record<string, string | number> = { per_page: params?.per_page ?? 100 };
+  if (params?.cursor) q.cursor = params.cursor;
+  if (params?.prefix) q.prefix = params.prefix;
+  const res = await fetch(`/api/proxy/${accountPrefix()}/r2/buckets/${bucketName}/objects?${new URLSearchParams(q as Record<string, string>).toString()}`, {
     method: "GET",
     headers: { "Content-Type": "application/json", "X-Panel-Pass": auth.pass ?? "" },
   });

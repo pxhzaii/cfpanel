@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import {
   listKvNamespaces,
   createKvNamespace,
@@ -59,12 +59,52 @@ const newR2Name = ref("");
 const newR2Location = ref("");
 // R2 详情
 const activeR2Bucket = ref<CfR2Bucket | null>(null);
+// R2 文件夹浏览
+const r2Path = ref<string[]>([]); // 当前路径段，如 ['2026', '08']
 const r2Objects = ref<CfR2Object[]>([]);
 const r2Detail = ref<{ location?: string; storage_class?: string } | null>(null);
 const r2Cors = ref<CfR2CorsConfig | null>(null);
 const r2CustomDomains = ref<CfR2CustomDomain[]>([]);
 const r2SubTab = ref<"files" | "cors" | "domains" | "settings">("files");
-// R2 文件操作
+// R2 文件夹/文件计算属性
+const r2CurrentPrefix = computed(() => r2Path.value.length > 0 ? r2Path.value.join("/") + "/" : "");
+
+const r2Folders = computed(() => {
+  const prefix = r2CurrentPrefix.value;
+  const folders = new Set<string>();
+  for (const obj of r2Objects.value) {
+    const key = obj.key;
+    if (prefix && !key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    const slashIdx = rest.indexOf("/");
+    if (slashIdx > 0) {
+      folders.add(rest.slice(0, slashIdx));
+    }
+  }
+  return Array.from(folders).sort();
+});
+
+const r2Files = computed(() => {
+  const prefix = r2CurrentPrefix.value;
+  const files: CfR2Object[] = [];
+  for (const obj of r2Objects.value) {
+    const key = obj.key;
+    if (prefix && !key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    if (!rest.includes("/")) {
+      files.push(obj);
+    }
+  }
+  return files.sort((a, b) => a.key.localeCompare(b.key));
+});
+
+const r2Breadcrumbs = computed(() => {
+  const crumbs = [{ label: "根目录", path: [] as string[] }];
+  for (let i = 0; i < r2Path.value.length; i++) {
+    crumbs.push({ label: r2Path.value[i], path: r2Path.value.slice(0, i + 1) });
+  }
+  return crumbs;
+});
 const r2ObjectContent = ref("");
 const r2ObjectKey = ref("");
 const r2ObjectContentType = ref("");
@@ -268,6 +308,7 @@ async function removeR2Bucket(b: CfR2Bucket) {
 async function openR2Bucket(b: CfR2Bucket) {
   activeR2Bucket.value = b;
   r2SubTab.value = "files";
+  r2Path.value = [];
   r2Objects.value = [];
   r2Detail.value = null;
   r2Cors.value = null;
@@ -277,6 +318,7 @@ async function openR2Bucket(b: CfR2Bucket) {
 
 function backR2() {
   activeR2Bucket.value = null;
+  r2Path.value = [];
   r2Objects.value = [];
   r2Detail.value = null;
   r2Cors.value = null;
@@ -285,13 +327,33 @@ function backR2() {
   r2ObjectContent.value = "";
 }
 
+function openR2Folder(folderName: string) {
+  r2Path.value = [...r2Path.value, folderName];
+}
+
+function navigateR2To(pathSegments: string[]) {
+  r2Path.value = pathSegments;
+}
+
 async function loadR2Objects() {
   if (!activeR2Bucket.value) return;
   loading.value = true;
   error.value = "";
   try {
-    const page = await listR2Objects(activeR2Bucket.value.name);
-    r2Objects.value = page.result;
+    // 加载所有对象用于客户端文件夹解析（R2 API 不支持 delimiter）
+    // 使用 prefix 过滤减少数据量
+    const allObjects: CfR2Object[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listR2Objects(activeR2Bucket.value.name, {
+        cursor,
+        per_page: 500,
+        prefix: r2CurrentPrefix.value || undefined,
+      });
+      allObjects.push(...page.result);
+      cursor = page.cursor;
+    } while (cursor && allObjects.length < 5000); // 安全上限
+    r2Objects.value = allObjects;
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -389,7 +451,7 @@ async function uploadR2Object() {
     const base64 = btoa(binary);
     await putR2Object(
       activeR2Bucket.value.name,
-      uploadKey.value.trim(),
+      r2CurrentPrefix.value + uploadKey.value.trim(),
       base64,
       uploadContentType.value || "text/plain"
     );
@@ -574,6 +636,15 @@ function switchTab(t: "kv" | "r2" | "d1") {
   if (t === "d1" && d1Databases.value.length === 0) loadD1();
 }
 
+// R2 路径变化时重新加载文件列表
+watch(r2Path, () => {
+  if (activeR2Bucket.value && r2SubTab.value === "files") {
+    r2ObjectKey.value = "";
+    r2ObjectContent.value = "";
+    loadR2Objects();
+  }
+});
+
 onMounted(() => {
   loadKvNamespaces();
 });
@@ -685,24 +756,42 @@ onMounted(() => {
         <!-- 文件列表 -->
         <div v-if="r2SubTab === 'files'">
           <div v-if="!r2ObjectKey">
+            <!-- 面包屑导航 -->
+            <div class="breadcrumbs">
+              <template v-for="(crumb, ci) in r2Breadcrumbs" :key="ci">
+                <span v-if="ci > 0" class="crumb-sep">/</span>
+                <button class="crumb" @click="navigateR2To(crumb.path)">{{ crumb.label }}</button>
+              </template>
+            </div>
+
             <div v-if="loading" class="empty">加载中…</div>
-            <div v-else-if="r2Objects.length === 0" class="empty">暂无文件</div>
-            <div class="list">
-              <div v-for="obj in r2Objects" :key="obj.key" class="item" @click="viewR2Object(obj.key)">
-                <div class="item-main">
-                  <div class="item-title">{{ obj.key }}</div>
-                  <div class="item-sub">{{ formatSize(obj.size) }} · {{ obj.http_metadata?.contentType || "未知类型" }} · {{ new Date(obj.last_modified).toLocaleDateString() }}</div>
-                </div>
-                <div class="item-side">
-                  <button class="del-btn" @click.stop="confirmR2Delete = obj.key" v-if="confirmR2Delete !== obj.key">删除</button>
-                  <div v-else class="confirm-box">
-                    <button class="danger sm" @click.stop="deleteR2ObjectConfirm(obj.key)">确认</button>
-                    <button class="sm" @click.stop="confirmR2Delete = null">取消</button>
+            <template v-else>
+              <div v-if="r2Folders.length === 0 && r2Files.length === 0" class="empty">此文件夹为空</div>
+              <div class="list">
+                <!-- 文件夹 -->
+                <div v-for="folder in r2Folders" :key="`folder:${folder}`" class="item folder-item" @click="openR2Folder(folder)">
+                  <div class="item-main">
+                    <div class="item-title folder-title">📁 {{ folder }}</div>
                   </div>
                   <div class="item-arrow">›</div>
                 </div>
+                <!-- 文件 -->
+                <div v-for="obj in r2Files" :key="obj.key" class="item" @click="viewR2Object(obj.key)">
+                  <div class="item-main">
+                    <div class="item-title">{{ obj.key.split('/').pop() }}</div>
+                    <div class="item-sub">{{ formatSize(obj.size) }} · {{ obj.http_metadata?.contentType || "未知类型" }} · {{ new Date(obj.last_modified).toLocaleDateString() }}</div>
+                  </div>
+                  <div class="item-side">
+                    <button class="del-btn" @click.stop="confirmR2Delete = obj.key" v-if="confirmR2Delete !== obj.key">删除</button>
+                    <div v-else class="confirm-box">
+                      <button class="danger sm" @click.stop="deleteR2ObjectConfirm(obj.key)">确认</button>
+                      <button class="sm" @click.stop="confirmR2Delete = null">取消</button>
+                    </div>
+                    <div class="item-arrow">›</div>
+                  </div>
+                </div>
               </div>
-            </div>
+            </template>
             <button class="add-btn" @click="showUploadR2 = true">+ 上传文件</button>
           </div>
 
@@ -828,7 +917,7 @@ onMounted(() => {
             <div class="item-main">
               <div class="item-title">{{ db.name }}</div>
               <div class="item-sub">{{ db.uuid }}</div>
-              <div class="item-sub" v-if="db.num_tables !== undefined">{{ db.num_tables }} 张表 · {{ Math.round((db.file_size ?? 0) / 1024) }}KB</div>
+              <div class="item-sub" v-if="db.file_size">{{ Math.round(db.file_size / 1024) }}KB</div>
             </div>
             <div class="item-side">
               <button class="del-btn" @click.stop="confirmDelete = `d1:${db.uuid}`" v-if="confirmDelete !== `d1:${db.uuid}`">删除</button>
@@ -1468,5 +1557,39 @@ onMounted(() => {
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
+}
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0;
+}
+.crumb {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: #aab3c5;
+  font-size: 13px;
+  cursor: pointer;
+}
+.crumb:hover {
+  background: rgba(249, 162, 34, 0.15);
+  color: #f69a22;
+}
+.crumb-sep {
+  color: #5d6879;
+  font-size: 13px;
+}
+.folder-item .item-main {
+  display: flex;
+  align-items: center;
+}
+.folder-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #f69a22;
 }
 </style>
