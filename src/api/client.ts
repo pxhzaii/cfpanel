@@ -202,11 +202,9 @@ export async function getWorkerScript(scriptName: string): Promise<string> {
 
 // ---------------- Pages ----------------
 
-export async function listPagesProjects(params?: PageParams): Promise<CfPagesProject[]> {
-  return proxy<CfPagesProject[]>("GET", `${accountPrefix()}/pages/projects`, undefined, {
-    ...params,
-    "per_page": 50,
-  });
+export async function listPagesProjects(): Promise<CfPagesProject[]> {
+  // CF Pages API 不支持 per_page 参数，省略分页参数
+  return proxy<CfPagesProject[]>("GET", `${accountPrefix()}/pages/projects`);
 }
 
 export async function listPagesDeployments(projectName: string): Promise<CfPagesDeployment[]> {
@@ -246,10 +244,12 @@ export async function deleteKvKey(namespaceId: string, key: string): Promise<unk
 // ---------------- R2 ----------------
 
 export async function listR2Buckets(params?: PageParams): Promise<CfR2Bucket[]> {
-  return proxy<CfR2Bucket[]>("GET", `${accountPrefix()}/r2/buckets`, undefined, {
+  const result = await proxy<{ buckets: CfR2Bucket[] }>("GET", `${accountPrefix()}/r2/buckets`, undefined, {
     ...params,
     "per_page": 50,
   });
+  // CF R2 API 返回 { buckets: [...] } 而非直接数组
+  return result?.buckets ?? [];
 }
 
 // ---------------- D1 ----------------
