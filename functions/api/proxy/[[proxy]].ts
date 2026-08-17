@@ -25,16 +25,11 @@ function safeEqual(a: string, b: string): boolean {
 
 /** 从环境变量解析用户列表 */
 function parseUsers(env: Environment): { username: string; password: string }[] {
-  // 优先使用 PANEL_USERS（新版多用户 JSON）
   if (env.PANEL_USERS) {
     try {
       const users = JSON.parse(env.PANEL_USERS);
       if (Array.isArray(users) && users.length > 0) return users;
-    } catch { /* JSON 解析失败，降级 */ }
-  }
-  // 向后兼容：旧版 PANEL_PASSWORD 单口令模式
-  if (env.PANEL_PASSWORD) {
-    return [{ username: "admin", password: env.PANEL_PASSWORD }];
+    } catch { /* JSON 解析失败 */ }
   }
   return [];
 }

@@ -1,12 +1,12 @@
---- 
+---
 AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'a53e1857-278d-4a27-8173-81805eab5557'
-  PropagateID: 'a53e1857-278d-4a27-8173-81805eab5557'
-  ReservedCode1: 'd82e4708-6b07-4ea9-8687-2dcf347f56ff'
-  ReservedCode2: 'd82e4708-6b07-4ea9-8687-2dcf347f56ff'
+  ProduceID: '95a15ebd-11a5-40a2-98e9-6e482bb4b400'
+  PropagateID: '95a15ebd-11a5-40a2-98e9-6e482bb4b400'
+  ReservedCode1: '6c5913e4-8818-4892-bb47-9abd8671ca5f'
+  ReservedCode2: '6c5913e4-8818-4892-bb47-9abd8671ca5f'
 ---
 
 # CF Panel
@@ -16,15 +16,16 @@ AIGC:
 用浏览器（尤其手机）就能管理：
 
 - **DNS**：域名列表、DNS 记录增删改查、一键切换橙云代理
-- **Workers**：脚本列表与代码查看
-- **Pages**：项目列表、部署记录
-- **存储**：KV 命名空间与键值管理、R2 存储桶列表、D1 数据库执行 SQL
+- **Workers**：脚本列表与代码查看、新建/删除、机密变量管理、绑定管理（KV/R2/D1/明文）
+- **Pages**：项目列表、部署记录、环境变量管理、绑定管理、新建项目支持 GitHub 仓库连接
+- **存储**：KV 命名空间与键值管理、R2 存储桶列表与文件浏览/上传/下载、D1 数据库 SQL 执行与表浏览
 
 ## 安全设计
 
-- 面板有独立**访问口令**（`PANEL_PASSWORD`），每个 API 请求都会校验，口令只存在浏览器 localStorage
+- 面板采用**账户+密码**认证（`PANEL_USERS`），每个 API 请求都会校验，凭据只存在浏览器 localStorage
 - **Cloudflare API Token**（`CF_API_TOKEN`）只存在服务端环境变量，经 `/api/proxy/` 转发调用 Cloudflare API，**绝不下发到浏览器**
 - 页面无任何 Token 输入框，Token 泄露面小
+- 密码校验使用恒定时间比较，防时序侧信道攻击
 
 ## 环境变量
 
@@ -32,8 +33,14 @@ AIGC:
 
 | 变量名 | 必填 | 说明 |
 | --- | --- | --- |
-| `PANEL_PASSWORD` | 是 | 访问面板的口令，请用强口令 |
+| `PANEL_USERS` | 是 | 面板用户列表，JSON 数组格式，如 `[{"username":"admin","password":"你的密码"}]` |
 | `CF_API_TOKEN` | 是 | Cloudflare API Token，权限见下表 |
+
+`PANEL_USERS` 支持多个用户：
+
+```json
+[{"username":"admin","password":"abc123"},{"username":"friend","password":"xyz789"}]
+```
 
 ## API Token 权限
 
@@ -63,14 +70,14 @@ npm run dev        # 前端热更新（Vite，默认 5173）
 
 ```bash
 # 终端里先设置环境变量（PowerShell 示例）
-$env:PANEL_PASSWORD="test123"
+$env:PANEL_USERS='[{"username":"admin","password":"test123"}]'
 $env:CF_API_TOKEN="你的token"
 
 npm run build
 npx wrangler pages dev dist
 ```
 
-打开输出的本地地址即可，登录口令就是 `PANEL_PASSWORD` 的值。
+打开输出的本地地址即可，用配置的用户名和密码登录。
 
 ## 部署到 Cloudflare Pages
 
@@ -81,18 +88,18 @@ npm run build
 npx wrangler pages deploy dist --project-name cfpanel
 ```
 
-方式二：**Git 集成**（推荐，跟其他项目一致）
+方式二：**Git 集成**（推荐）
 
-1. 把本项目推到 GitHub
+1. Fork 本项目到你的 GitHub
 2. Cloudflare Dashboard → Workers & Pages → Create → Pages → 连接 Git 仓库
 3. 构建配置：
    - 构建命令：`npm run build`
    - 输出目录：`dist`
    - Node 版本：20 或以上
-4. 在 **设置 → 环境变量** 添加 `PANEL_PASSWORD` 和 `CF_API_TOKEN`
+4. 在 **设置 → 环境变量** 添加 `PANEL_USERS` 和 `CF_API_TOKEN`
 5. 保存后触发首次部署
 
-部署完成后用手机浏览器打开 Pages 域名（如 `cfpanel.pages.dev`），输入口令即可使用。建议顺手在 Cloudflare 控制台把 Pages 项目绑定你的自定义域名（如 `cf.5as.cn`）。
+部署完成后用手机浏览器打开 Pages 域名（如 `cfpanel.pages.dev`），输入用户名和密码即可使用。建议顺手在 Cloudflare 控制台把 Pages 项目绑定你的自定义域名。
 
 ## 技术栈
 
@@ -104,6 +111,6 @@ npx wrangler pages deploy dist --project-name cfpanel
 
 - API Token 泄漏风险由 Token 本身权限决定，建议按最小权限创建
 - 面板仅提供浏览器端管理，不做 OAuth 登录（保持简单、无第三方依赖）
-- 手机上也可以把面板网址“添加到主屏幕”当作 App 使用
+- 手机上也可以把面板网址"添加到主屏幕"当作 App 使用
 
 > AI生成
