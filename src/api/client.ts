@@ -713,9 +713,27 @@ export async function getWorkerSettings(scriptName: string): Promise<CfWorkerSet
   return result;
 }
 
-/** 更新 Worker 绑定（PATCH settings，替换全部绑定） */
+/**
+ * 更新 Worker 绑定（PATCH /settings，multipart/form-data）。
+ * CF API 的 /settings 端点要求 multipart/form-data，用 JSON 会返回 415。
+ * multipart body 中 settings 字段为 JSON，含完整 bindings 数组（整体替换语义）。
+ */
 export async function updateWorkerBindings(scriptName: string, bindings: CfWorkerBinding[]): Promise<unknown> {
-  return proxy("PATCH", `${accountPrefix()}/workers/scripts/${scriptName}/settings`, { bindings });
+  const token = auth.pass;
+  const panelUser = auth.panelUser;
+  if (!token || !panelUser) throw new ApiError(401, "未登录");
+
+  const settings = { bindings };
+  const formData = new FormData();
+  const settingsBlob = new Blob([JSON.stringify(settings)], { type: "application/json" });
+  formData.append("settings", settingsBlob, "settings.json");
+
+  const res = await fetch(`/api/proxy/${accountPrefix()}/workers/scripts/${scriptName}/settings`, {
+    method: "PATCH",
+    headers: { "X-Panel-User": panelUser, "X-Panel-Pass": token },
+    body: formData,
+  });
+  return handle<unknown>(res);
 }
 
 // ---------------- 账号信息 ----------------
