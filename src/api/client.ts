@@ -362,9 +362,46 @@ export async function putR2Object(bucketName: string, key: string, base64Body: s
   return proxy("PUT", `${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`, body);
 }
 
-/** R2 获取对象内容 */
+/** R2 获取对象内容（可能返回 JSON{base64} 或原始二进制，需兼容处理） */
 export async function getR2Object(bucketName: string, key: string): Promise<CfR2ObjectContent> {
-  return proxy<CfR2ObjectContent>("GET", `${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`);
+  const token = auth.pass;
+  if (!token) throw new ApiError(401, "未登录");
+  const res = await fetch(`/api/proxy/${accountPrefix()}/r2/buckets/${bucketName}/objects/${encodeURIComponent(key)}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", "X-Panel-Pass": token },
+  });
+  if (!res.ok) {
+    // 尝试解析错误信息
+    let msg = `请求失败（HTTP ${res.status}）`;
+    try {
+      const data = await res.json();
+      if (data.errors?.[0]?.message) msg = data.errors[0].message;
+    } catch { /* 忽略 */ }
+    throw new ApiError(res.status, msg);
+  }
+  // R2 GET 对象可能返回两种格式：
+  // 1. JSON: {result: {body: base64, contentType: ...}} — 某些 API 版本
+  // 2. 原始二进制流 — Content-Type 为 image/jpeg 等
+  const ct = res.headers.get("Content-Type") ?? "";
+  if (ct.includes("application/json")) {
+    // JSON 格式，正常解析
+    const data = await res.json();
+    if (!data.success) {
+      throw new ApiError(res.status, data.errors?.[0]?.message ?? "请求失败");
+    }
+    return data.result as CfR2ObjectContent;
+  } else {
+    // 原始二进制流，转 base64
+    const buf = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
+    return { body: base64, contentType: ct };
+  }
 }
 
 /** R2 删除对象 */

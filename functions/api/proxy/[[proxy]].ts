@@ -65,7 +65,8 @@ export const onRequest: ApiFunction = async ({ request, env, params }) => {
 
   try {
     const upstream = await fetch(target, { method, headers, body });
-    const text = await upstream.text();
+    // 用 arrayBuffer 读取，避免 text() 损坏二进制内容（如图片）
+    const buf = await upstream.arrayBuffer();
     const out = new Headers();
     out.set("Content-Type", upstream.headers.get("Content-Type") ?? "application/json");
     // 透传分页相关响应头
@@ -73,7 +74,7 @@ export const onRequest: ApiFunction = async ({ request, env, params }) => {
       const v = upstream.headers.get(key);
       if (v) out.set(key, v);
     }
-    return new Response(text, { status: upstream.status, headers: out });
+    return new Response(buf, { status: upstream.status, headers: out });
   } catch (e) {
     return json({ success: false, error: `Cloudflare API 请求失败：${(e as Error).message}` }, 502);
   }
