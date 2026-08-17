@@ -113,6 +113,10 @@ const showUploadR2 = ref(false);
 const uploadKey = ref("");
 const uploadText = ref("");
 const uploadContentType = ref("");
+const uploadFile = ref<File | null>(null);
+const uploadFileName = ref("");
+const uploadMode = ref<"text" | "file">("file");
+const uploading = ref(false);
 const confirmR2Delete = ref<string | null>(null);
 const emptying = ref(false);
 const emptyResult = ref<string | null>(null);
@@ -441,27 +445,48 @@ async function uploadR2Object() {
     error.value = "请输入文件名";
     return;
   }
+  uploading.value = true;
   error.value = "";
   try {
-    // 将文本转为 base64
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(uploadText.value);
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    const base64 = btoa(binary);
+    let base64 = "";
+    let contentType = uploadContentType.value || "application/octet-stream";
+    if (uploadMode.value === "file" && uploadFile.value) {
+      // 二进制文件 → base64
+      const arrayBuffer = await uploadFile.value.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      base64 = btoa(binary);
+      if (!uploadContentType.value) contentType = uploadFile.value.type || "application/octet-stream";
+    } else {
+      // 文本 → base64
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(uploadText.value);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      base64 = btoa(binary);
+      contentType = uploadContentType.value || "text/plain";
+    }
     await putR2Object(
       activeR2Bucket.value.name,
       r2CurrentPrefix.value + uploadKey.value.trim(),
       base64,
-      uploadContentType.value || "text/plain"
+      contentType
     );
     uploadKey.value = "";
     uploadText.value = "";
     uploadContentType.value = "";
+    uploadFile.value = null;
+    uploadFileName.value = "";
     showUploadR2.value = false;
     await loadR2Objects();
   } catch (e) {
     error.value = (e as Error).message;
+  } finally {
+    uploading.value = false;
   }
 }
 
@@ -541,6 +566,46 @@ async function removeCustomDomain(domain: string) {
   } catch (e) {
     error.value = (e as Error).message;
   }
+}
+
+async function downloadR2Object(key: string) {
+  if (!activeR2Bucket.value) return;
+  try {
+    const data = await getR2Object(activeR2Bucket.value.name, key);
+    const base64 = data.body;
+    // base64 → Blob
+    const byteChars = atob(base64);
+    const byteNumbers = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteNumbers], { type: data.contentType || "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = key.split("/").pop() || key;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement;
+  if (input.files && input.files.length > 0) {
+    const f = input.files[0];
+    uploadFile.value = f;
+    uploadFileName.value = f.name;
+    // 自动填充 key 和 contentType
+    if (!uploadKey.value.trim()) uploadKey.value = f.name;
+    uploadContentType.value = f.type || "";
+  }
+}
+
+function clearUploadFile() {
+  uploadFile.value = null;
+  uploadFileName.value = "";
 }
 
 function formatSize(bytes: number): string {
@@ -782,12 +847,12 @@ onMounted(() => {
                     <div class="item-sub">{{ formatSize(obj.size) }} · {{ obj.http_metadata?.contentType || "未知类型" }} · {{ new Date(obj.last_modified).toLocaleDateString() }}</div>
                   </div>
                   <div class="item-side">
+                    <button class="dl-btn" @click.stop="downloadR2Object(obj.key)">下载</button>
                     <button class="del-btn" @click.stop="confirmR2Delete = obj.key" v-if="confirmR2Delete !== obj.key">删除</button>
                     <div v-else class="confirm-box">
                       <button class="danger sm" @click.stop="deleteR2ObjectConfirm(obj.key)">确认</button>
                       <button class="sm" @click.stop="confirmR2Delete = null">取消</button>
                     </div>
-                    <div class="item-arrow">›</div>
                   </div>
                 </div>
               </div>
@@ -809,7 +874,10 @@ onMounted(() => {
             </div>
             <img v-if="r2ObjectContent.startsWith('data:image/')" :src="r2ObjectContent" class="r2-image" />
             <pre v-else class="code">{{ r2ObjectContent }}</pre>
-            <button class="danger run" @click="deleteR2ObjectConfirm(r2ObjectKey); r2ObjectKey = ''; r2ObjectContent = ''">删除此文件</button>
+            <div class="btn-row">
+              <button class="primary" @click="downloadR2Object(r2ObjectKey)">下载文件</button>
+              <button class="danger" @click="deleteR2ObjectConfirm(r2ObjectKey); r2ObjectKey = ''; r2ObjectContent = ''">删除此文件</button>
+            </div>
           </div>
         </div>
 
@@ -1059,21 +1127,36 @@ onMounted(() => {
           <button class="close" @click="showUploadR2 = false">关闭</button>
         </div>
         <div class="fields">
-          <label>
-            文件名
-            <input v-model="uploadKey" placeholder="如：test.txt" @keyup.enter="uploadR2Object" />
-          </label>
-          <label>
-            内容类型
-            <input v-model="uploadContentType" placeholder="如：text/plain（可选）" />
-          </label>
-          <label>
+          <!-- 模式切换 -->
+          <div class="upload-tabs">
+            <button :class="{ active: uploadMode === 'file' }" @click="uploadMode = 'file'">选择文件</button>
+            <button :class="{ active: uploadMode === 'text' }" @click="uploadMode = 'text'">输入文本</button>
+          </div>
+          <!-- 文件选择 -->
+          <div v-if="uploadMode === 'file'" class="file-picker">
+            <input type="file" @change="onFileSelected" class="file-input" />
+            <div v-if="uploadFileName" class="file-info">
+              <span>{{ uploadFileName }}</span>
+              <button class="sm" @click="clearUploadFile">清除</button>
+            </div>
+          </div>
+          <!-- 文本输入 -->
+          <label v-if="uploadMode === 'text'">
             内容（文本）
             <textarea v-model="uploadText" rows="6" placeholder="输入文本内容"></textarea>
           </label>
+          <label>
+            文件名
+            <input v-model="uploadKey" placeholder="如：test.txt（留空则用上传文件名）" @keyup.enter="uploadR2Object" />
+          </label>
+          <label>
+            内容类型
+            <input v-model="uploadContentType" placeholder="如：image/png（留空自动识别）" />
+          </label>
+          <div class="upload-hint" v-if="r2Path.length > 0">将上传到：{{ r2Path.join('/') }}/</div>
         </div>
         <div class="btns">
-          <button class="primary" @click="uploadR2Object">上传</button>
+          <button class="primary" @click="uploadR2Object" :disabled="uploading">{{ uploading ? "上传中…" : "上传" }}</button>
         </div>
       </div>
     </div>
@@ -1591,5 +1674,75 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   color: #f69a22;
+}
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.btn-row button {
+  flex: 1;
+}
+.dl-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(249, 162, 34, 0.3);
+  background: transparent;
+  color: #f69a22;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.upload-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.upload-tabs button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #aab3c5;
+  font-size: 13px;
+  cursor: pointer;
+}
+.upload-tabs button.active {
+  background: rgba(249, 162, 34, 0.15);
+  color: #f69a22;
+  border-color: rgba(249, 162, 34, 0.4);
+}
+.file-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.file-input {
+  padding: 10px;
+  border-radius: 9px;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.25);
+  color: #e8edf5;
+  font-size: 13px;
+}
+.file-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(249, 162, 34, 0.08);
+  border: 1px solid rgba(249, 162, 34, 0.2);
+  font-size: 13px;
+  color: #f69a22;
+}
+.upload-hint {
+  font-size: 12px;
+  color: #8b95a9;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
 }
 </style>
