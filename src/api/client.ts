@@ -111,14 +111,21 @@ async function proxy<T>(method: string, path: string, body?: unknown, params?: R
 // ---------------- 账号与登录 ----------------
 
 export async function login(pass: string): Promise<CfUser> {
-  const res = await fetch("/api/proxy/user/tokens/verify", {
+  // 用 accounts 端点验证 Token 有效性（兼容帐户级 Token）
+  const res = await fetch("/api/proxy/accounts", {
     method: "GET",
     headers: { "X-Panel-Pass": pass },
   });
-  const user = await handle<CfUser>(res);
+  const accounts = await handle<CfAccount[]>(res);
   auth.pass = pass;
-  auth.user = user;
-  return user;
+  // 从第一个 account 提取用户信息
+  const acct = accounts[0];
+  auth.user = {
+    id: acct?.id ?? "",
+    name: acct?.name ?? "",
+    type: acct?.type,
+  };
+  return auth.user;
 }
 
 export function logout() {
