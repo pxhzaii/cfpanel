@@ -46,6 +46,6 @@ Cloudflare 管理面板 -浏览器端  部署在cloudflare的pages上
 
 在 [API Tokens 页面](https://dash.cloudflare.com/profile/api-tokens) 创建 Token，推荐按需勾选（至少勾选你要用到的功能）：
 
-选择模板  `编辑 Cloudflare Workers`  按图增加权限
+选择模板  `编辑 Cloudflare Workers`  按图增加所需权限
 ![权限](3.jpg)
 
