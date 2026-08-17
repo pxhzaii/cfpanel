@@ -60,6 +60,7 @@ const newWorkerUseGithub = ref(false);
 const newWorkerGithubOwner = ref("");
 const newWorkerGithubRepo = ref("");
 const newWorkerBuildCommand = ref("");
+const newWorkerDeployCommand = ref("");
 const newWorkerDestDir = ref("");
 const newWorkerRootDir = ref("");
 
@@ -113,6 +114,7 @@ const newProjectUseGithub = ref(false);
 const newProjectGithubOwner = ref("");
 const newProjectGithubRepo = ref("");
 const newProjectBuildCommand = ref("");
+const newProjectDeployCommand = ref("");
 const newProjectDestDir = ref("");
 const newProjectRootDir = ref("");
 const newProjectFramework = ref("");
@@ -207,9 +209,10 @@ async function createWorker() {
     } else {
       params.code = newWorkerCode.value;
     }
-    if (newWorkerBuildCommand.value.trim() || newWorkerDestDir.value.trim() || newWorkerRootDir.value.trim()) {
+    if (newWorkerBuildCommand.value.trim() || newWorkerDeployCommand.value.trim() || newWorkerDestDir.value.trim() || newWorkerRootDir.value.trim()) {
       const buildConfig: Record<string, string> = {};
       if (newWorkerBuildCommand.value.trim()) buildConfig.build_command = newWorkerBuildCommand.value.trim();
+      if (newWorkerDeployCommand.value.trim()) buildConfig.deploy_command = newWorkerDeployCommand.value.trim();
       if (newWorkerDestDir.value.trim()) buildConfig.destination_dir = newWorkerDestDir.value.trim();
       if (newWorkerRootDir.value.trim()) buildConfig.root_dir = newWorkerRootDir.value.trim();
       params.build_config = buildConfig;
@@ -221,6 +224,7 @@ async function createWorker() {
     newWorkerGithubOwner.value = "";
     newWorkerGithubRepo.value = "";
     newWorkerBuildCommand.value = "";
+    newWorkerDeployCommand.value = "";
     newWorkerDestDir.value = "";
     newWorkerRootDir.value = "";
     showCreateWorker.value = false;
@@ -469,6 +473,7 @@ async function createProject() {
     const buildConfig: Record<string, string> = {};
     if (newProjectFramework.value) buildConfig.framework = newProjectFramework.value;
     if (newProjectBuildCommand.value.trim()) buildConfig.build_command = newProjectBuildCommand.value.trim();
+    if (newProjectDeployCommand.value.trim()) buildConfig.deploy_command = newProjectDeployCommand.value.trim();
     if (newProjectDestDir.value.trim()) buildConfig.destination_dir = newProjectDestDir.value.trim();
     if (newProjectRootDir.value.trim()) buildConfig.root_dir = newProjectRootDir.value.trim();
     if (Object.keys(buildConfig).length > 0) {
@@ -481,6 +486,7 @@ async function createProject() {
     newProjectGithubOwner.value = "";
     newProjectGithubRepo.value = "";
     newProjectBuildCommand.value = "";
+    newProjectDeployCommand.value = "";
     newProjectDestDir.value = "";
     newProjectRootDir.value = "";
     newProjectFramework.value = "";
@@ -847,6 +853,10 @@ onMounted(() => {
             <input v-model="newWorkerBuildCommand" placeholder="如：npm run build" />
           </label>
           <label>
+            部署命令
+            <input v-model="newWorkerDeployCommand" placeholder="如：npx wrangler deploy" />
+          </label>
+          <label>
             部署目录（构建产物路径）
             <input v-model="newWorkerDestDir" placeholder="如：dist" />
           </label>
@@ -1055,6 +1065,10 @@ onMounted(() => {
           <label>
             构建命令
             <input v-model="newProjectBuildCommand" placeholder="如：npm run build" />
+          </label>
+          <label>
+            部署命令
+            <input v-model="newProjectDeployCommand" placeholder="如：npx wrangler pages deploy dist" />
           </label>
           <label>
             输出目录
