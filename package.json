@@ -16,7 +16,6 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260426.1",
-    "@rolldown/binding-win32-x64-msvc": "^1.2.4",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
