@@ -47,17 +47,5 @@ Cloudflare 管理面板 -浏览器端  部署在cloudflare的pages上
 
 在 [API Tokens 页面](https://dash.cloudflare.com/profile/api-tokens) 创建 Token，推荐按需勾选（至少勾选你要用到的功能）：
 
-| 权限组 | 权限 | 范围 |
-| --- | --- | --- |
-| Zone | Zone → Read | All zones 或指定域名 |
-| Zone | DNS → Edit | All zones 或指定域名 |
-| Account | Workers Scripts → Read | All accounts |
-| Account | Workers KV Storage → Edit | All accounts |
-| Account | Workers R2 Storage → Read | All accounts |
-| Account | D1 → Edit | All accounts |
-| Account | Pages → Read | All accounts |
-| Account | Cloudflare Pages → Edit | All accounts |
-
-> 只想要 DNS 的话，最小权限就是 Zone Zone/DNS Edit；要玩 KV 就加 Workers KV Storage Edit；R2 只读、D1 只读/执行按需。
-
-
+选择模板  编辑 Cloudflare Workers
+增加 DNS设置  DNS
