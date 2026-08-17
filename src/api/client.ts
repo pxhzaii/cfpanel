@@ -15,6 +15,9 @@ import type {
   CfR2Bucket,
   CfD1Database,
   CfD1QueryResult,
+  CfPagesEnvVar,
+  CfWorkerSecret,
+  CfWorkerBinding,
   CfAccount,
   PageParams,
   DnsRecordForm,
@@ -280,6 +283,14 @@ export async function listKvNamespaces(params?: PageParams): Promise<CfKvNamespa
   });
 }
 
+export async function createKvNamespace(title: string): Promise<CfKvNamespace> {
+  return proxy<CfKvNamespace>("POST", `${accountPrefix()}/storage/kv/namespaces`, { title });
+}
+
+export async function deleteKvNamespace(namespaceId: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/storage/kv/namespaces/${namespaceId}`);
+}
+
 export async function listKvKeys(namespaceId: string, prefix?: string): Promise<CfKvKey[]> {
   return proxy<CfKvKey[]>("GET", `${accountPrefix()}/storage/kv/namespaces/${namespaceId}/keys`, undefined, {
     prefix: prefix ?? undefined,
@@ -312,14 +323,77 @@ export async function listR2Buckets(params?: PageParams): Promise<CfR2Bucket[]> 
   return result?.buckets ?? [];
 }
 
+export async function createR2Bucket(name: string, locationHint?: string): Promise<CfR2Bucket> {
+  const body: Record<string, string> = { name };
+  if (locationHint) body.locationHint = locationHint;
+  return proxy<CfR2Bucket>("POST", `${accountPrefix()}/r2/buckets`, body);
+}
+
+export async function deleteR2Bucket(name: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/r2/buckets/${name}`);
+}
+
 // ---------------- D1 ----------------
 
 export async function listD1Databases(): Promise<CfD1Database[]> {
   return proxy<CfD1Database[]>("GET", `${accountPrefix()}/d1/database`);
 }
 
+export async function createD1Database(name: string): Promise<CfD1Database> {
+  return proxy<CfD1Database>("POST", `${accountPrefix()}/d1/database`, { name });
+}
+
+export async function deleteD1Database(databaseId: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/d1/database/${databaseId}`);
+}
+
 export async function runD1Query(databaseId: string, sql: string): Promise<CfD1QueryResult> {
   return proxy<CfD1QueryResult>("POST", `${accountPrefix()}/d1/database/${databaseId}/query`, { sql });
+}
+
+// ---------------- Pages 环境变量 ----------------
+
+export async function getPagesEnvVars(projectName: string, env: "production" | "preview" = "production"): Promise<Record<string, CfPagesEnvVar>> {
+  const result = await proxy<CfPagesProject>("GET", `${accountPrefix()}/pages/projects/${projectName}/environments/${env}/vars`);
+  // CF API 返回完整 project 对象，环境变量在 deployment_configs.{env}.env_vars 中
+  const envVars = result?.deployment_configs?.[env]?.env_vars;
+  return (envVars as Record<string, CfPagesEnvVar>) ?? {};
+}
+
+export async function setPagesEnvVar(projectName: string, varName: string, value: string, env: "production" | "preview" = "production", type: "plain_text" | "secret_text" = "plain_text"): Promise<unknown> {
+  return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}/environments/${env}/vars/${encodeURIComponent(varName)}`, { value, type });
+}
+
+export async function deletePagesEnvVar(projectName: string, varName: string, env: "production" | "preview" = "production"): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/pages/projects/${projectName}/environments/${env}/vars/${encodeURIComponent(varName)}`);
+}
+
+// ---------------- Pages 项目管理 ----------------
+
+export async function createPagesProject(data: {
+  name: string;
+  production_branch?: string;
+}): Promise<CfPagesProject> {
+  return proxy<CfPagesProject>("POST", `${accountPrefix()}/pages/projects`, data);
+}
+
+export async function deletePagesProject(projectName: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/pages/projects/${projectName}`);
+}
+
+// ---------------- Worker 机密与绑定 ----------------
+
+export async function listWorkerSecrets(scriptName: string): Promise<CfWorkerSecret[]> {
+  const result = await proxy<{ secrets?: CfWorkerSecret[] } | CfWorkerSecret[]>("GET", `${accountPrefix()}/workers/scripts/${scriptName}/secrets`);
+  // API 可能返回数组或 { secrets: [...] }
+  if (Array.isArray(result)) return result;
+  return result?.secrets ?? [];
+}
+
+export async function listWorkerBindings(scriptName: string): Promise<CfWorkerBinding[]> {
+  const result = await proxy<{ bindings?: CfWorkerBinding[] } | CfWorkerBinding[]>("GET", `${accountPrefix()}/workers/scripts/${scriptName}/bindings`);
+  if (Array.isArray(result)) return result;
+  return result?.bindings ?? [];
 }
 
 // ---------------- 账号信息 ----------------
