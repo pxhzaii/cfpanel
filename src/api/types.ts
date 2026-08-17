@@ -13,11 +13,13 @@ export interface CfResponse<T = unknown> {
   };
 }
 
-/** 用户信息 */
+/** 账号信息（从 accounts API 获取，用于登录验证和用户信息展示） */
 export interface CfUser {
   id: string;
-  email: string;
-  username: string;
+  name: string;
+  type?: string;
+  email?: string;
+  username?: string;
   first_name?: string;
   last_name?: string;
 }
@@ -141,12 +143,14 @@ export interface CfD1QueryResult {
   errors?: unknown[];
 }
 
-/** 账号信息 */
+/** 帐户信息（与 CfUser 兼容） */
 export interface CfAccount {
   id: string;
   name: string;
   type: string;
   created_on: string;
+  settings?: Record<string, unknown>;
+  legacy_flags?: Record<string, unknown>;
 }
 
 /** KV key 列表项 */
