@@ -628,9 +628,83 @@ export async function getPagesProject(projectName: string): Promise<CfPagesProje
   return proxy<CfPagesProject>("GET", `${accountPrefix()}/pages/projects/${projectName}`);
 }
 
-/** 手动触发 Pages 项目部署（从 GitHub 源拉取并构建） */
+/**
+ * 手动触发 Pages 项目部署（从 GitHub 源拉取并构建）。
+ *
+ * 已知问题（CF API 行为）：
+ *   ad_hoc 部署不接收 multipart 中的 env_vars part，
+ *   部署完成后会用空 env_vars 覆盖项目级配置，导致环境变量全部丢失。
+ *
+ * 修复方案：
+ *   1. 部署前保存项目级 env_vars + bindings 快照
+ *   2. 触发 ad_hoc 部署
+ *   3. 轮询部署状态直到完成（最多等 5 分钟）
+ *   4. 部署完成后立即 PATCH 恢复 env_vars 和 bindings
+ */
 export async function createPagesDeployment(projectName: string): Promise<CfPagesDeployment> {
-  return proxy<CfPagesDeployment>("POST", `${accountPrefix()}/pages/projects/${projectName}/deployments`);
+  const pass = auth.pass;
+  const panelUser = auth.panelUser;
+  if (!pass || !panelUser) throw new ApiError(401, "未登录");
+
+  // 1. 部署前保存项目级配置快照
+  const proj = await getPagesProject(projectName);
+  const savedEnvVars = (proj.deployment_configs?.production?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
+  const savedKv = proj.deployment_configs?.production?.kv_namespaces ?? {};
+  const savedR2 = proj.deployment_configs?.production?.r2_buckets ?? {};
+  const savedD1 = proj.deployment_configs?.production?.d1_databases ?? {};
+
+  // 2. 触发 ad_hoc 部署
+  const res = await fetch(`/api/proxy/${accountPrefix()}/pages/projects/${projectName}/deployments`, {
+    method: "POST",
+    headers: { "X-Panel-User": panelUser, "X-Panel-Pass": pass },
+  });
+  const deployment = await handle<CfPagesDeployment>(res);
+  const deployId = deployment.id;
+
+  // 3. 轮询部署状态（后台异步，不阻塞前端）
+  //    部署完成后恢复配置——用 void 启动后台 Promise
+  void (async () => {
+    const maxAttempts = 60; // 最多等 5 分钟（每 5 秒查一次）
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const d = await proxy<CfPagesDeployment>("GET", `${accountPrefix()}/pages/projects/${projectName}/deployments/${deployId}`);
+        const stage = d.latest_stage;
+        if (stage?.status === "success" || stage?.status === "failure" || stage?.status === "canceled") {
+          break;
+        }
+      } catch {
+        // 查询失败继续重试
+      }
+    }
+
+    // 4. 部署完成后恢复 env_vars 和 bindings
+    try {
+      const restoreBody: Record<string, unknown> = {
+        deployment_configs: { production: {} as Record<string, unknown> },
+      };
+      const prod = (restoreBody.deployment_configs as { production: Record<string, unknown> }).production;
+      if (Object.keys(savedEnvVars).length > 0) {
+        prod.env_vars = savedEnvVars;
+      }
+      if (Object.keys(savedKv).length > 0) {
+        prod.kv_namespaces = savedKv;
+      }
+      if (Object.keys(savedR2).length > 0) {
+        prod.r2_buckets = savedR2;
+      }
+      if (Object.keys(savedD1).length > 0) {
+        prod.d1_databases = savedD1;
+      }
+      if (Object.keys(prod).length > 0) {
+        await proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, restoreBody);
+      }
+    } catch {
+      // 恢复失败不影响部署本身
+    }
+  })();
+
+  return deployment;
 }
 
 /**

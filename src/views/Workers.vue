@@ -65,6 +65,9 @@ const newWorkerDeployCommand = ref("");
 const newWorkerDestDir = ref("");
 const newWorkerRootDir = ref("");
 
+// Worker 新建 - 环境变量
+const newWorkerEnvs = ref<Array<{ name: string; value: string; type: "plain_text" | "secret_text" }>>([]);
+
 // Worker 机密增删
 const showAddSecret = ref(false);
 const newSecretName = ref("");
@@ -119,6 +122,9 @@ const newProjectBuildCommand = ref("");
 const newProjectDestDir = ref("");
 const newProjectRootDir = ref("");
 const newProjectFramework = ref("");
+
+// Pages 新建 - 环境变量
+const newProjectEnvs = ref<Array<{ name: string; value: string; type: "plain_text" | "secret_text" }>>([]);
 
 const counts = computed(() => ({
   workers: workers.value.length,
@@ -219,6 +225,35 @@ async function createWorker() {
       params.build_config = buildConfig;
     }
     await createWorkerScript(params as unknown as Parameters<typeof createWorkerScript>[0]);
+    // 设置环境变量
+    const envErrors: string[] = [];
+    for (const env of newWorkerEnvs.value) {
+      if (!env.name.trim()) continue;
+      try {
+        if (env.type === "secret_text") {
+          await setWorkerSecret(newWorkerName.value.trim(), env.name.trim(), env.value);
+        }
+      } catch (e) {
+        envErrors.push(`${env.name}: ${(e as Error).message}`);
+      }
+    }
+    // 批量设置明文变量（作为 Worker plain_text 绑定）
+    const plainTextVars = newWorkerEnvs.value.filter((e) => e.type === "plain_text" && e.name.trim());
+    if (plainTextVars.length > 0) {
+      try {
+        const bindings: CfWorkerBinding[] = plainTextVars.map((e) => ({
+          type: "plain_text",
+          name: e.name.trim(),
+          text: e.value,
+        }));
+        await updateWorkerBindings(newWorkerName.value.trim(), bindings);
+      } catch (e) {
+        envErrors.push(`明文变量: ${(e as Error).message}`);
+      }
+    }
+    if (envErrors.length > 0) {
+      error.value = `Worker 已创建，但部分环境变量设置失败：\n${envErrors.join("\n")}`;
+    }
     newWorkerName.value = "";
     newWorkerCode.value = "";
     newWorkerUseGithub.value = false;
@@ -228,6 +263,7 @@ async function createWorker() {
     newWorkerDeployCommand.value = "";
     newWorkerDestDir.value = "";
     newWorkerRootDir.value = "";
+    newWorkerEnvs.value = [];
     showCreateWorker.value = false;
     await loadWorkers();
   } catch (e) {
@@ -517,6 +553,25 @@ async function createProject() {
       params.build_config = buildConfig;
     }
     await createPagesProject(params as unknown as Parameters<typeof createPagesProject>[0]);
+    // 设置环境变量
+    const projEnvErrors: string[] = [];
+    for (const env of newProjectEnvs.value) {
+      if (!env.name.trim()) continue;
+      try {
+        await setPagesEnvVar(
+          newProjectName.value.trim(),
+          env.name.trim(),
+          env.value,
+          "production",
+          env.type
+        );
+      } catch (e) {
+        projEnvErrors.push(`${env.name}: ${(e as Error).message}`);
+      }
+    }
+    if (projEnvErrors.length > 0) {
+      error.value = `项目已创建，但部分环境变量设置失败：\n${projEnvErrors.join("\n")}`;
+    }
     newProjectName.value = "";
     newProjectBranch.value = "main";
     newProjectUseGithub.value = false;
@@ -526,6 +581,7 @@ async function createProject() {
     newProjectDestDir.value = "";
     newProjectRootDir.value = "";
     newProjectFramework.value = "";
+    newProjectEnvs.value = [];
     showCreateProject.value = false;
     await loadPages();
   } catch (e) {
@@ -903,6 +959,18 @@ onMounted(() => {
             根目录（仓库子目录）
             <input v-model="newWorkerRootDir" placeholder="如：apps/worker" />
           </label>
+
+          <div class="section-divider">环境变量（可选）</div>
+          <div v-for="(env, i) in newWorkerEnvs" :key="`we-${i}`" class="env-row">
+            <input v-model="env.name" placeholder="变量名" class="env-name" />
+            <input v-model="env.value" placeholder="值" class="env-val" />
+            <select v-model="env.type" class="env-type">
+              <option value="plain_text">明文</option>
+              <option value="secret_text">机密</option>
+            </select>
+            <button class="env-del" @click="newWorkerEnvs.splice(i, 1)">✕</button>
+          </div>
+          <button class="add-env-btn" @click="newWorkerEnvs.push({ name: '', value: '', type: 'plain_text' })">+ 添加环境变量</button>
         </div>
         <p v-if="!newWorkerUseGithub" class="hint">代码使用 ES 模块格式，创建后可在详情页添加机密变量和绑定。</p>
         <div class="btns">
@@ -1131,6 +1199,18 @@ onMounted(() => {
             <p class="hint">注意：通过面板创建的项目不会自动建立 GitHub Webhook，推代码不会自动触发部署。创建后请到项目详情 → 部署 → 点击"重新部署"手动触发首次部署。</p>
           </template>
           <p v-if="!newProjectUseGithub" class="hint">创建后可在项目详情中手动触发部署，或通过 wrangler 直接上传。</p>
+
+          <div class="section-divider">环境变量（可选）</div>
+          <div v-for="(env, i) in newProjectEnvs" :key="`pe-${i}`" class="env-row">
+            <input v-model="env.name" placeholder="变量名" class="env-name" />
+            <input v-model="env.value" placeholder="值" class="env-val" />
+            <select v-model="env.type" class="env-type">
+              <option value="plain_text">明文</option>
+              <option value="secret_text">机密</option>
+            </select>
+            <button class="env-del" @click="newProjectEnvs.splice(i, 1)">✕</button>
+          </div>
+          <button class="add-env-btn" @click="newProjectEnvs.push({ name: '', value: '', type: 'plain_text' })">+ 添加环境变量</button>
         </div>
         <div class="btns">
           <button class="primary" @click="createProject">创建</button>
@@ -1482,6 +1562,69 @@ onMounted(() => {
   font-size: 12px;
   color: #6b768a;
   line-height: 1.5;
+}
+.env-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.env-name {
+  flex: 0 0 35%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #e8edf5;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+.env-val {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #e8edf5;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+.env-type {
+  flex: 0 0 auto;
+  padding: 8px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #e8edf5;
+  font-size: 12px;
+  outline: none;
+  font-family: inherit;
+}
+.env-type option {
+  background: #121a2c;
+}
+.env-del {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 93, 77, 0.3);
+  background: transparent;
+  color: #ff7a6e;
+  font-size: 13px;
+  cursor: pointer;
+}
+.add-env-btn {
+  margin-top: 4px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: #aab3c5;
+  font-size: 12px;
+  cursor: pointer;
 }
 .btns {
   display: flex;
