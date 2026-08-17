@@ -23,6 +23,9 @@ import type {
   CfPagesEnvVar,
   CfWorkerSecret,
   CfWorkerBinding,
+  CfWorkerSettings,
+  CfPagesBinding,
+  CreatePagesProjectParams,
   CfAccount,
   PageParams,
   DnsRecordForm,
@@ -504,15 +507,34 @@ export async function deletePagesEnvVar(projectName: string, varName: string, en
 
 // ---------------- Pages 项目管理 ----------------
 
-export async function createPagesProject(data: {
-  name: string;
-  production_branch?: string;
-}): Promise<CfPagesProject> {
+export async function createPagesProject(data: CreatePagesProjectParams): Promise<CfPagesProject> {
   return proxy<CfPagesProject>("POST", `${accountPrefix()}/pages/projects`, data);
 }
 
 export async function deletePagesProject(projectName: string): Promise<unknown> {
   return proxy("DELETE", `${accountPrefix()}/pages/projects/${projectName}`);
+}
+
+/** 获取 Pages 项目详情（含 deployment_configs 中的绑定信息） */
+export async function getPagesProject(projectName: string): Promise<CfPagesProject> {
+  return proxy<CfPagesProject>("GET", `${accountPrefix()}/pages/projects/${projectName}`);
+}
+
+/** 更新 Pages 项目绑定（PATCH deployment_configs） */
+export async function updatePagesBindings(
+  projectName: string,
+  env: "production" | "preview",
+  bindingType: "kv_namespaces" | "r2_buckets" | "d1_databases",
+  bindings: CfPagesBinding[]
+): Promise<unknown> {
+  const patchBody = {
+    deployment_configs: {
+      [env]: {
+        [bindingType]: bindings,
+      },
+    },
+  };
+  return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, patchBody);
 }
 
 // ---------------- Worker 机密与绑定 ----------------
@@ -528,6 +550,64 @@ export async function listWorkerBindings(scriptName: string): Promise<CfWorkerBi
   const result = await proxy<{ bindings?: CfWorkerBinding[] } | CfWorkerBinding[]>("GET", `${accountPrefix()}/workers/scripts/${scriptName}/bindings`);
   if (Array.isArray(result)) return result;
   return result?.bindings ?? [];
+}
+
+// ---------------- Worker 脚本新建/删除 ----------------
+
+/** 新建 Worker 脚本（PUT multipart/form-data） */
+export async function createWorkerScript(name: string, code: string): Promise<unknown> {
+  const token = auth.pass;
+  if (!token) throw new ApiError(401, "未登录");
+  const metadata = {
+    main_module: "worker.js",
+    bindings: [] as CfWorkerBinding[],
+  };
+  const formData = new FormData();
+  const metadataBlob = new Blob([JSON.stringify(metadata)], { type: "application/json" });
+  formData.append("metadata", metadataBlob);
+  const codeBlob = new Blob([code], { type: "application/javascript+module" });
+  formData.append("worker.js", codeBlob, "worker.js");
+  const res = await fetch(`/api/proxy/${accountPrefix()}/workers/scripts/${name}`, {
+    method: "PUT",
+    headers: { "X-Panel-Pass": token },
+    body: formData,
+  });
+  return handle<unknown>(res);
+}
+
+/** 删除 Worker 脚本 */
+export async function deleteWorkerScript(name: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/workers/scripts/${name}`);
+}
+
+// ---------------- Worker 机密增删 ----------------
+
+/** 添加/更新 Worker 机密变量 */
+export async function setWorkerSecret(scriptName: string, secretName: string, text: string): Promise<unknown> {
+  return proxy("PUT", `${accountPrefix()}/workers/scripts/${scriptName}/secrets`, {
+    name: secretName,
+    text,
+    type: "secret_text",
+  });
+}
+
+/** 删除 Worker 机密变量 */
+export async function deleteWorkerSecret(scriptName: string, secretName: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/workers/scripts/${scriptName}/secrets/${secretName}`);
+}
+
+// ---------------- Worker 绑定增删（通过 settings 端点） ----------------
+
+/** 获取 Worker 设置（含绑定） */
+export async function getWorkerSettings(scriptName: string): Promise<CfWorkerSettings> {
+  const result = await proxy<CfWorkerSettings | CfWorkerBinding[]>("GET", `${accountPrefix()}/workers/scripts/${scriptName}/settings`);
+  if (Array.isArray(result)) return { bindings: result };
+  return result;
+}
+
+/** 更新 Worker 绑定（PATCH settings，替换全部绑定） */
+export async function updateWorkerBindings(scriptName: string, bindings: CfWorkerBinding[]): Promise<unknown> {
+  return proxy("PATCH", `${accountPrefix()}/workers/scripts/${scriptName}/settings`, { bindings });
 }
 
 // ---------------- 账号信息 ----------------

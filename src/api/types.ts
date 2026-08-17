@@ -86,8 +86,8 @@ export interface CfPagesProject {
     root_dir?: string;
   };
   deployment_configs?: {
-    production?: { env_vars?: Record<string, unknown> };
-    preview?: { env_vars?: Record<string, unknown> };
+    production?: CfPagesDeploymentConfig;
+    preview?: CfPagesDeploymentConfig;
   };
   created_on: string;
   modified_on: string;
@@ -230,6 +230,48 @@ export interface CfWorkerBinding {
   bucket_name?: string;
   class_name?: string;
   environment?: string;
+  text?: string;
+}
+
+/** Worker 设置（含绑定） */
+export interface CfWorkerSettings {
+  bindings?: CfWorkerBinding[];
+}
+
+/** Pages 绑定条目 */
+export interface CfPagesBinding {
+  namespace_id?: string;
+  bucket_name?: string;
+  id?: string;
+  variable_name: string;
+}
+
+/** Pages 部署配置（含绑定） */
+export interface CfPagesDeploymentConfig {
+  env_vars?: Record<string, unknown>;
+  kv_namespaces?: CfPagesBinding[];
+  r2_buckets?: CfPagesBinding[];
+  d1_databases?: CfPagesBinding[];
+}
+
+/** Pages 项目创建参数（含 GitHub 仓库源） */
+export interface CreatePagesProjectParams {
+  name: string;
+  production_branch?: string;
+  source?: {
+    type: "github";
+    config: {
+      owner: string;
+      repo_name: string;
+      production_branch?: string;
+      deployments_enabled?: boolean;
+    };
+  };
+  build_config?: {
+    build_command?: string;
+    destination_dir?: string;
+    root_dir?: string;
+  };
 }
 
 /** 账号信息 */

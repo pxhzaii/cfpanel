@@ -3,17 +3,39 @@ import { ref, onMounted, computed } from "vue";
 import {
   listWorkers,
   getWorkerScript,
+  createWorkerScript,
+  deleteWorkerScript,
   listPagesProjects,
   listPagesDeployments,
   createPagesProject,
   deletePagesProject,
+  getPagesProject,
   getPagesEnvVars,
   setPagesEnvVar,
   deletePagesEnvVar,
+  updatePagesBindings,
   listWorkerSecrets,
+  setWorkerSecret,
+  deleteWorkerSecret,
   listWorkerBindings,
+  getWorkerSettings,
+  updateWorkerBindings,
+  listKvNamespaces,
+  listR2Buckets,
+  listD1Databases,
 } from "../api/client";
-import type { CfWorkerScript, CfPagesProject, CfPagesDeployment, CfPagesEnvVar, CfWorkerSecret, CfWorkerBinding } from "../api/types";
+import type {
+  CfWorkerScript,
+  CfPagesProject,
+  CfPagesDeployment,
+  CfPagesEnvVar,
+  CfWorkerSecret,
+  CfWorkerBinding,
+  CfPagesBinding,
+  CfKvNamespace,
+  CfR2Bucket,
+  CfD1Database,
+} from "../api/types";
 
 const tab = ref<"workers" | "pages">("workers");
 const workers = ref<CfWorkerScript[]>([]);
@@ -29,10 +51,32 @@ const workerSecrets = ref<CfWorkerSecret[]>([]);
 const workerBindings = ref<CfWorkerBinding[]>([]);
 const workerSubTab = ref<"code" | "secrets" | "bindings">("code");
 
+// Worker 新建
+const showCreateWorker = ref(false);
+const newWorkerName = ref("");
+const newWorkerCode = ref("");
+
+// Worker 机密增删
+const showAddSecret = ref(false);
+const newSecretName = ref("");
+const newSecretValue = ref("");
+const confirmDeleteSecret = ref<string | null>(null);
+
+// Worker 绑定增删
+const showAddBinding = ref(false);
+const newBindingType = ref<"kv_namespace" | "r2_bucket" | "d1_database" | "plain_text">("kv_namespace");
+const newBindingName = ref("");
+const newBindingValue = ref("");
+const newBindingResource = ref("");
+const kvList = ref<CfKvNamespace[]>([]);
+const r2List = ref<CfR2Bucket[]>([]);
+const d1List = ref<CfD1Database[]>([]);
+const confirmDeleteBinding = ref<string | null>(null);
+
 // Pages 详情
 const pagesDeployments = ref<CfPagesDeployment[]>([]);
 const activeProject = ref<CfPagesProject | null>(null);
-const projectSubTab = ref<"deployments" | "envs" | "settings">("deployments");
+const projectSubTab = ref<"deployments" | "envs" | "bindings" | "settings">("deployments");
 const envVars = ref<Record<string, CfPagesEnvVar>>({});
 const showAddEnv = ref(false);
 const newEnvName = ref("");
@@ -41,10 +85,26 @@ const newEnvType = ref<"plain_text" | "secret_text">("plain_text");
 const envTarget = ref<"production" | "preview">("production");
 const confirmDeleteEnv = ref<string | null>(null);
 
+// Pages 绑定管理
+const pagesBindings = ref<{
+  kv: CfPagesBinding[];
+  r2: CfPagesBinding[];
+  d1: CfPagesBinding[];
+}>({ kv: [], r2: [], d1: [] });
+const pagesBindingsTarget = ref<"production" | "preview">("production");
+const showAddPagesBinding = ref(false);
+const newPagesBindingType = ref<"kv_namespaces" | "r2_buckets" | "d1_databases">("kv_namespaces");
+const newPagesBindingVarName = ref("");
+const newPagesBindingResource = ref("");
+const confirmDeletePagesBinding = ref<string | null>(null);
+
 // 创建项目
 const showCreateProject = ref(false);
 const newProjectName = ref("");
 const newProjectBranch = ref("main");
+const newProjectUseGithub = ref(false);
+const newProjectGithubOwner = ref("");
+const newProjectGithubRepo = ref("");
 
 const counts = computed(() => ({
   workers: workers.value.length,
@@ -75,6 +135,19 @@ async function loadPages() {
   }
 }
 
+async function loadResourceLists() {
+  try {
+    const [kvs, r2s, d1s] = await Promise.all([
+      listKvNamespaces().catch(() => []),
+      listR2Buckets().catch(() => []),
+      listD1Databases().catch(() => []),
+    ]);
+    kvList.value = kvs;
+    r2List.value = r2s;
+    d1List.value = d1s;
+  } catch { /* 静默 */ }
+}
+
 async function openWorker(name: string) {
   workerDetail.value = name;
   workerCode.value = "";
@@ -86,7 +159,6 @@ async function openWorker(name: string) {
   } catch (e) {
     error.value = (e as Error).message;
   }
-  // 加载机密和绑定
   try {
     workerSecrets.value = await listWorkerSecrets(name);
   } catch { /* 静默 */ }
@@ -95,11 +167,121 @@ async function openWorker(name: string) {
   } catch { /* 静默 */ }
 }
 
+async function createWorker() {
+  if (!newWorkerName.value.trim()) {
+    error.value = "请输入 Worker 名称";
+    return;
+  }
+  if (!newWorkerCode.value.trim()) {
+    error.value = "请输入 Worker 代码";
+    return;
+  }
+  error.value = "";
+  try {
+    await createWorkerScript(newWorkerName.value.trim(), newWorkerCode.value);
+    newWorkerName.value = "";
+    newWorkerCode.value = "";
+    showCreateWorker.value = false;
+    await loadWorkers();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function removeWorker(name: string) {
+  error.value = "";
+  try {
+    await deleteWorkerScript(name);
+    confirmDelete.value = null;
+    await loadWorkers();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function addWorkerSecret() {
+  if (!workerDetail.value || !newSecretName.value.trim()) {
+    error.value = "请输入变量名";
+    return;
+  }
+  error.value = "";
+  try {
+    await setWorkerSecret(workerDetail.value, newSecretName.value.trim(), newSecretValue.value);
+    newSecretName.value = "";
+    newSecretValue.value = "";
+    showAddSecret.value = false;
+    workerSecrets.value = await listWorkerSecrets(workerDetail.value);
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function removeWorkerSecret(secretName: string) {
+  if (!workerDetail.value) return;
+  error.value = "";
+  try {
+    await deleteWorkerSecret(workerDetail.value, secretName);
+    confirmDeleteSecret.value = null;
+    workerSecrets.value = await listWorkerSecrets(workerDetail.value);
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function addWorkerBinding() {
+  if (!workerDetail.value || !newBindingName.value.trim()) {
+    error.value = "请输入绑定变量名";
+    return;
+  }
+  error.value = "";
+  try {
+    // 获取当前设置中的完整绑定列表
+    const settings = await getWorkerSettings(workerDetail.value);
+    const currentBindings = settings.bindings ?? [];
+    // 构造新绑定
+    const binding: CfWorkerBinding = { type: newBindingType.value, name: newBindingName.value.trim() };
+    if (newBindingType.value === "kv_namespace" && newBindingResource.value) {
+      binding.namespace_id = newBindingResource.value;
+    } else if (newBindingType.value === "r2_bucket" && newBindingResource.value) {
+      binding.bucket_name = newBindingResource.value;
+    } else if (newBindingType.value === "d1_database" && newBindingResource.value) {
+      binding.database_id = newBindingResource.value;
+    } else if (newBindingType.value === "plain_text") {
+      binding.text = newBindingValue.value;
+    }
+    currentBindings.push(binding);
+    await updateWorkerBindings(workerDetail.value, currentBindings);
+    newBindingName.value = "";
+    newBindingValue.value = "";
+    newBindingResource.value = "";
+    showAddBinding.value = false;
+    workerBindings.value = await listWorkerBindings(workerDetail.value);
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function removeWorkerBinding(idx: number) {
+  if (!workerDetail.value) return;
+  error.value = "";
+  try {
+    const settings = await getWorkerSettings(workerDetail.value);
+    const currentBindings = settings.bindings ?? [];
+    const filtered = currentBindings.filter((_, i) => i !== idx);
+    await updateWorkerBindings(workerDetail.value, filtered);
+    confirmDeleteBinding.value = null;
+    workerBindings.value = await listWorkerBindings(workerDetail.value);
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
 async function openDeployments(p: CfPagesProject) {
   activeProject.value = p;
   projectSubTab.value = "deployments";
   pagesDeployments.value = [];
   envVars.value = {};
+  pagesBindings.value = { kv: [], r2: [], d1: [] };
   try {
     pagesDeployments.value = await listPagesDeployments(p.name);
   } catch (e) {
@@ -151,6 +333,73 @@ async function removeEnvVar(name: string) {
   }
 }
 
+async function loadPagesBindings() {
+  if (!activeProject.value) return;
+  try {
+    const proj = await getPagesProject(activeProject.value.name);
+    const cfg = proj.deployment_configs?.[pagesBindingsTarget.value];
+    pagesBindings.value = {
+      kv: cfg?.kv_namespaces ?? [],
+      r2: cfg?.r2_buckets ?? [],
+      d1: cfg?.d1_databases ?? [],
+    };
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function addPagesBinding() {
+  if (!activeProject.value || !newPagesBindingVarName.value.trim()) {
+    error.value = "请输入变量名";
+    return;
+  }
+  if (!newPagesBindingResource.value) {
+    error.value = "请选择资源";
+    return;
+  }
+  error.value = "";
+  try {
+    const btype = newPagesBindingType.value;
+    const current = [...pagesBindings.value[
+      btype === "kv_namespaces" ? "kv" : btype === "r2_buckets" ? "r2" : "d1"
+    ]];
+    const newBinding: CfPagesBinding = {
+      variable_name: newPagesBindingVarName.value.trim(),
+    };
+    if (btype === "kv_namespaces") {
+      newBinding.namespace_id = newPagesBindingResource.value;
+    } else if (btype === "r2_buckets") {
+      newBinding.bucket_name = newPagesBindingResource.value;
+    } else if (btype === "d1_databases") {
+      newBinding.id = newPagesBindingResource.value;
+    }
+    current.push(newBinding);
+    await updatePagesBindings(activeProject.value.name, pagesBindingsTarget.value, btype, current);
+    newPagesBindingVarName.value = "";
+    newPagesBindingResource.value = "";
+    showAddPagesBinding.value = false;
+    await loadPagesBindings();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function removePagesBinding(btype: "kv" | "r2" | "d1", idx: number) {
+  if (!activeProject.value) return;
+  error.value = "";
+  try {
+    const apiKey =
+      btype === "kv" ? "kv_namespaces" : btype === "r2" ? "r2_buckets" : "d1_databases";
+    const current = [...pagesBindings.value[btype]];
+    const filtered = current.filter((_, i) => i !== idx);
+    await updatePagesBindings(activeProject.value.name, pagesBindingsTarget.value, apiKey, filtered);
+    confirmDeletePagesBinding.value = null;
+    await loadPagesBindings();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
 async function createProject() {
   if (!newProjectName.value.trim()) {
     error.value = "请输入项目名称";
@@ -158,12 +407,27 @@ async function createProject() {
   }
   error.value = "";
   try {
-    await createPagesProject({
+    const params: Record<string, unknown> = {
       name: newProjectName.value.trim(),
       production_branch: newProjectBranch.value || "main",
-    });
+    };
+    if (newProjectUseGithub.value && newProjectGithubOwner.value.trim() && newProjectGithubRepo.value.trim()) {
+      params.source = {
+        type: "github",
+        config: {
+          owner: newProjectGithubOwner.value.trim(),
+          repo_name: newProjectGithubRepo.value.trim(),
+          production_branch: newProjectBranch.value || "main",
+          deployments_enabled: true,
+        },
+      };
+    }
+    await createPagesProject(params as unknown as Parameters<typeof createPagesProject>[0]);
     newProjectName.value = "";
     newProjectBranch.value = "main";
+    newProjectUseGithub.value = false;
+    newProjectGithubOwner.value = "";
+    newProjectGithubRepo.value = "";
     showCreateProject.value = false;
     await loadPages();
   } catch (e) {
@@ -192,6 +456,7 @@ function formatDate(s: string) {
 onMounted(() => {
   loadWorkers();
   loadPages();
+  loadResourceLists();
 });
 </script>
 
@@ -221,9 +486,17 @@ onMounted(() => {
             <div class="item-title">{{ w.id }}</div>
             <div class="item-sub">更新于 {{ formatDate(w.modified_on) }}</div>
           </div>
-          <div class="item-arrow">›</div>
+          <div class="item-side">
+            <button class="del-btn" @click.stop="confirmDelete = `worker:${w.id}`" v-if="confirmDelete !== `worker:${w.id}`">删除</button>
+            <div v-else class="confirm-box">
+              <button class="danger sm" @click.stop="removeWorker(w.id)">确认</button>
+              <button class="sm" @click.stop="confirmDelete = null">取消</button>
+            </div>
+            <div class="item-arrow">›</div>
+          </div>
         </div>
       </div>
+      <button class="add-btn" @click="showCreateWorker = true">+ 新建 Worker</button>
     </div>
 
     <!-- Worker 详情 -->
@@ -244,7 +517,9 @@ onMounted(() => {
 
       <pre v-if="workerSubTab === 'code'" class="code">{{ workerCode || "加载中…" }}</pre>
 
+      <!-- Worker 机密 -->
       <div v-if="workerSubTab === 'secrets'">
+        <button class="add-btn" @click="showAddSecret = true">+ 添加机密</button>
         <div v-if="workerSecrets.length === 0" class="empty">暂无机密变量</div>
         <div class="list">
           <div v-for="s in workerSecrets" :key="s.name" class="item">
@@ -252,17 +527,35 @@ onMounted(() => {
               <div class="item-title">{{ s.name }}</div>
               <div class="item-sub">{{ s.type }}</div>
             </div>
+            <button class="del-btn" @click="confirmDeleteSecret = s.name" v-if="confirmDeleteSecret !== s.name">删除</button>
+            <div v-else class="confirm-box">
+              <button class="danger sm" @click="removeWorkerSecret(s.name)">确认</button>
+              <button class="sm" @click="confirmDeleteSecret = null">取消</button>
+            </div>
           </div>
         </div>
       </div>
 
+      <!-- Worker 绑定 -->
       <div v-if="workerSubTab === 'bindings'">
+        <button class="add-btn" @click="showAddBinding = true">+ 添加绑定</button>
         <div v-if="workerBindings.length === 0" class="empty">暂无绑定</div>
         <div class="list">
           <div v-for="(b, i) in workerBindings" :key="i" class="item">
             <div class="item-main">
               <div class="item-title">{{ b.name }}</div>
-              <div class="item-sub">{{ b.type }}<template v-if="b.bucket_name"> · {{ b.bucket_name }}</template><template v-if="b.namespace_id"> · {{ b.namespace_id }}</template><template v-if="b.database_id"> · {{ b.database_id }}</template></div>
+              <div class="item-sub">
+                {{ b.type }}
+                <template v-if="b.bucket_name"> · {{ b.bucket_name }}</template>
+                <template v-if="b.namespace_id"> · {{ b.namespace_id }}</template>
+                <template v-if="b.database_id"> · {{ b.database_id }}</template>
+                <template v-if="b.text"> · {{ b.text }}</template>
+              </div>
+            </div>
+            <button class="del-btn" @click="confirmDeleteBinding = String(i)" v-if="confirmDeleteBinding !== String(i)">删除</button>
+            <div v-else class="confirm-box">
+              <button class="danger sm" @click="removeWorkerBinding(i)">确认</button>
+              <button class="sm" @click="confirmDeleteBinding = null">取消</button>
             </div>
           </div>
         </div>
@@ -302,6 +595,7 @@ onMounted(() => {
       <div class="sub-tabs">
         <button :class="{ active: projectSubTab === 'deployments' }" @click="projectSubTab = 'deployments'">部署</button>
         <button :class="{ active: projectSubTab === 'envs' }" @click="projectSubTab = 'envs'; loadEnvVars()">环境变量</button>
+        <button :class="{ active: projectSubTab === 'bindings' }" @click="projectSubTab = 'bindings'; loadPagesBindings()">绑定</button>
         <button :class="{ active: projectSubTab === 'settings' }" @click="projectSubTab = 'settings'">设置</button>
       </div>
 
@@ -311,7 +605,7 @@ onMounted(() => {
         <div class="list">
           <div v-for="d in pagesDeployments" :key="d.id" class="item">
             <div class="item-main">
-              <div class="item-title">{{ d.environment }} · {{ formatDate(d.created_on) }}</div>
+              <div class="item-title">{{ d.environment === "production" ? "生产" : "预览" }} · {{ formatDate(d.created_on) }}</div>
               <div class="item-sub">{{ d.url }}</div>
               <div class="item-sub" v-if="d.latest_stage">
                 状态：{{ d.latest_stage.name }}（{{ d.latest_stage.status }}）
@@ -325,8 +619,8 @@ onMounted(() => {
       <div v-if="projectSubTab === 'envs'">
         <div class="env-bar">
           <select v-model="envTarget" @change="loadEnvVars" class="env-select">
-            <option value="production">Production</option>
-            <option value="preview">Preview</option>
+            <option value="production">生产</option>
+            <option value="preview">预览</option>
           </select>
           <button class="primary" @click="showAddEnv = true">+ 添加变量</button>
         </div>
@@ -343,6 +637,74 @@ onMounted(() => {
             <div v-else class="confirm-box">
               <button class="danger sm" @click="removeEnvVar(k)">确认</button>
               <button class="sm" @click="confirmDeleteEnv = null">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 绑定 -->
+      <div v-if="projectSubTab === 'bindings'">
+        <div class="env-bar">
+          <select v-model="pagesBindingsTarget" @change="loadPagesBindings" class="env-select">
+            <option value="production">生产</option>
+            <option value="preview">预览</option>
+          </select>
+          <button class="primary" @click="showAddPagesBinding = true">+ 添加绑定</button>
+        </div>
+
+        <!-- KV 绑定 -->
+        <div class="binding-section">
+          <div class="binding-title">KV 命名空间（{{ pagesBindings.kv.length }}）</div>
+          <div v-if="pagesBindings.kv.length === 0" class="empty-sm">暂无 KV 绑定</div>
+          <div class="list">
+            <div v-for="(b, i) in pagesBindings.kv" :key="`kv-${i}`" class="item">
+              <div class="item-main">
+                <div class="item-title">{{ b.variable_name }}</div>
+                <div class="item-sub">namespace_id: {{ b.namespace_id }}</div>
+              </div>
+              <button class="del-btn" @click="confirmDeletePagesBinding = `kv-${i}`" v-if="confirmDeletePagesBinding !== `kv-${i}`">删除</button>
+              <div v-else class="confirm-box">
+                <button class="danger sm" @click="removePagesBinding('kv', i)">确认</button>
+                <button class="sm" @click="confirmDeletePagesBinding = null">取消</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- R2 绑定 -->
+        <div class="binding-section">
+          <div class="binding-title">R2 存储桶（{{ pagesBindings.r2.length }}）</div>
+          <div v-if="pagesBindings.r2.length === 0" class="empty-sm">暂无 R2 绑定</div>
+          <div class="list">
+            <div v-for="(b, i) in pagesBindings.r2" :key="`r2-${i}`" class="item">
+              <div class="item-main">
+                <div class="item-title">{{ b.variable_name }}</div>
+                <div class="item-sub">bucket_name: {{ b.bucket_name }}</div>
+              </div>
+              <button class="del-btn" @click="confirmDeletePagesBinding = `r2-${i}`" v-if="confirmDeletePagesBinding !== `r2-${i}`">删除</button>
+              <div v-else class="confirm-box">
+                <button class="danger sm" @click="removePagesBinding('r2', i)">确认</button>
+                <button class="sm" @click="confirmDeletePagesBinding = null">取消</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- D1 绑定 -->
+        <div class="binding-section">
+          <div class="binding-title">D1 数据库（{{ pagesBindings.d1.length }}）</div>
+          <div v-if="pagesBindings.d1.length === 0" class="empty-sm">暂无 D1 绑定</div>
+          <div class="list">
+            <div v-for="(b, i) in pagesBindings.d1" :key="`d1-${i}`" class="item">
+              <div class="item-main">
+                <div class="item-title">{{ b.variable_name }}</div>
+                <div class="item-sub">database_id: {{ b.id }}</div>
+              </div>
+              <button class="del-btn" @click="confirmDeletePagesBinding = `d1-${i}`" v-if="confirmDeletePagesBinding !== `d1-${i}`">删除</button>
+              <div v-else class="confirm-box">
+                <button class="danger sm" @click="removePagesBinding('d1', i)">确认</button>
+                <button class="sm" @click="confirmDeletePagesBinding = null">取消</button>
+              </div>
             </div>
           </div>
         </div>
@@ -375,6 +737,154 @@ onMounted(() => {
             <span class="info-label">输出目录</span>
             <span class="info-val">{{ activeProject.build_config.destination_dir }}</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 新建 Worker 弹层 -->
+    <div v-if="showCreateWorker" class="mask" @click.self="showCreateWorker = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>新建 Worker</h3>
+          <button class="close" @click="showCreateWorker = false">关闭</button>
+        </div>
+        <div class="fields">
+          <label>
+            Worker 名称
+            <input v-model="newWorkerName" placeholder="如：my-worker" @keyup.enter="createWorker" />
+          </label>
+          <label>
+            脚本代码
+            <textarea v-model="newWorkerCode" rows="8" placeholder='export default {\n  async fetch(request, env, ctx) {\n    return new Response("Hello World!");\n  },\n};' class="code-input"></textarea>
+          </label>
+        </div>
+        <p class="hint">代码使用 ES 模块格式（export default），创建后可在详情页添加机密变量和绑定。</p>
+        <div class="btns">
+          <button class="primary" @click="createWorker">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 添加 Worker 机密弹层 -->
+    <div v-if="showAddSecret" class="mask" @click.self="showAddSecret = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>添加机密变量</h3>
+          <button class="close" @click="showAddSecret = false">关闭</button>
+        </div>
+        <div class="fields">
+          <label>
+            变量名
+            <input v-model="newSecretName" placeholder="如：API_TOKEN" @keyup.enter="addWorkerSecret" />
+          </label>
+          <label>
+            值
+            <textarea v-model="newSecretValue" rows="3" placeholder="机密值（加密存储，不可读取）"></textarea>
+          </label>
+        </div>
+        <div class="btns">
+          <button class="primary" @click="addWorkerSecret">添加</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 添加 Worker 绑定弹层 -->
+    <div v-if="showAddBinding" class="mask" @click.self="showAddBinding = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>添加绑定</h3>
+          <button class="close" @click="showAddBinding = false">关闭</button>
+        </div>
+        <div class="fields">
+          <label>
+            绑定类型
+            <select v-model="newBindingType">
+              <option value="kv_namespace">KV 命名空间</option>
+              <option value="r2_bucket">R2 存储桶</option>
+              <option value="d1_database">D1 数据库</option>
+              <option value="plain_text">明文变量</option>
+            </select>
+          </label>
+          <label>
+            变量名（在代码中引用的名称）
+            <input v-model="newBindingName" placeholder="如：MY_KV" />
+          </label>
+          <label v-if="newBindingType === 'kv_namespace'">
+            KV 命名空间
+            <select v-model="newBindingResource">
+              <option value="">请选择</option>
+              <option v-for="kv in kvList" :key="kv.id" :value="kv.id">{{ kv.title }}</option>
+            </select>
+          </label>
+          <label v-if="newBindingType === 'r2_bucket'">
+            R2 存储桶
+            <select v-model="newBindingResource">
+              <option value="">请选择</option>
+              <option v-for="r2 in r2List" :key="r2.name" :value="r2.name">{{ r2.name }}</option>
+            </select>
+          </label>
+          <label v-if="newBindingType === 'd1_database'">
+            D1 数据库
+            <select v-model="newBindingResource">
+              <option value="">请选择</option>
+              <option v-for="d1 in d1List" :key="d1.uuid" :value="d1.uuid">{{ d1.name }}</option>
+            </select>
+          </label>
+          <label v-if="newBindingType === 'plain_text'">
+            变量值
+            <input v-model="newBindingValue" placeholder="明文值" />
+          </label>
+        </div>
+        <div class="btns">
+          <button class="primary" @click="addWorkerBinding">添加</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 添加 Pages 绑定弹层 -->
+    <div v-if="showAddPagesBinding" class="mask" @click.self="showAddPagesBinding = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>添加绑定</h3>
+          <button class="close" @click="showAddPagesBinding = false">关闭</button>
+        </div>
+        <div class="fields">
+          <label>
+            绑定类型
+            <select v-model="newPagesBindingType">
+              <option value="kv_namespaces">KV 命名空间</option>
+              <option value="r2_buckets">R2 存储桶</option>
+              <option value="d1_databases">D1 数据库</option>
+            </select>
+          </label>
+          <label>
+            变量名（在代码中引用的名称）
+            <input v-model="newPagesBindingVarName" placeholder="如：MY_KV" />
+          </label>
+          <label v-if="newPagesBindingType === 'kv_namespaces'">
+            KV 命名空间
+            <select v-model="newPagesBindingResource">
+              <option value="">请选择</option>
+              <option v-for="kv in kvList" :key="kv.id" :value="kv.id">{{ kv.title }}</option>
+            </select>
+          </label>
+          <label v-if="newPagesBindingType === 'r2_buckets'">
+            R2 存储桶
+            <select v-model="newPagesBindingResource">
+              <option value="">请选择</option>
+              <option v-for="r2 in r2List" :key="r2.name" :value="r2.name">{{ r2.name }}</option>
+            </select>
+          </label>
+          <label v-if="newPagesBindingType === 'd1_databases'">
+            D1 数据库
+            <select v-model="newPagesBindingResource">
+              <option value="">请选择</option>
+              <option v-for="d1 in d1List" :key="d1.uuid" :value="d1.uuid">{{ d1.name }}</option>
+            </select>
+          </label>
+        </div>
+        <div class="btns">
+          <button class="primary" @click="addPagesBinding">添加</button>
         </div>
       </div>
     </div>
@@ -425,8 +935,23 @@ onMounted(() => {
             生产分支
             <input v-model="newProjectBranch" placeholder="main" />
           </label>
+          <label class="checkbox-row">
+            <input type="checkbox" v-model="newProjectUseGithub" />
+            <span>连接 GitHub 仓库</span>
+          </label>
+          <template v-if="newProjectUseGithub">
+            <label>
+              GitHub 仓库所有者
+              <input v-model="newProjectGithubOwner" placeholder="如：pxhzaii" />
+            </label>
+            <label>
+              GitHub 仓库名
+              <input v-model="newProjectGithubRepo" placeholder="如：my-project" />
+            </label>
+            <p class="hint">需先在 Cloudflare 控制台授权 Cloudflare Pages GitHub App 访问对应仓库，否则创建后无法自动部署。</p>
+          </template>
         </div>
-        <p class="hint">创建后可在 Cloudflare 控制台连接 GitHub 仓库，或通过 wrangler 直接上传部署。</p>
+        <p v-if="!newProjectUseGithub" class="hint">创建后可在 Cloudflare 控制台连接 GitHub 仓库，或通过 wrangler 直接上传部署。</p>
         <div class="btns">
           <button class="primary" @click="createProject">创建</button>
         </div>
@@ -481,6 +1006,12 @@ onMounted(() => {
   text-align: center;
   color: #6b768a;
   font-size: 13px;
+}
+.empty-sm {
+  padding: 12px 0;
+  text-align: center;
+  color: #6b768a;
+  font-size: 12px;
 }
 .list {
   display: flex;
@@ -576,6 +1107,7 @@ onMounted(() => {
 .sub-tabs {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .sub-tabs button {
   padding: 6px 12px;
@@ -604,6 +1136,12 @@ onMounted(() => {
   max-height: 50vh;
   overflow-y: auto;
 }
+.code-input {
+  font-family: "SF Mono", "Fira Code", monospace !important;
+  font-size: 12px !important;
+  line-height: 1.5;
+  white-space: pre;
+}
 .env-bar {
   display: flex;
   gap: 8px;
@@ -621,6 +1159,15 @@ onMounted(() => {
 .env-select option {
   background: #121a2c;
 }
+.binding-section {
+  margin-top: 12px;
+}
+.binding-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8edf5;
+  margin-bottom: 6px;
+}
 .primary {
   padding: 8px 14px;
   border: none;
@@ -633,6 +1180,7 @@ onMounted(() => {
 }
 .add-btn {
   margin-top: 12px;
+  margin-bottom: 12px;
   width: 100%;
   padding: 10px;
   border-radius: 10px;
@@ -730,6 +1278,16 @@ onMounted(() => {
 }
 .fields select option {
   background: #121a2c;
+}
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+.checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #f69a22;
 }
 .hint {
   margin: 8px 0 0;
