@@ -686,8 +686,9 @@ function backDb() {
 function switchTab(t: "kv" | "r2" | "d1") {
   tab.value = t;
   error.value = "";
-  if (t === "r2" && r2Buckets.value.length === 0) loadR2();
-  if (t === "d1" && d1Databases.value.length === 0) loadD1();
+  if (t === "kv") loadKvNamespaces();
+  if (t === "r2") loadR2();
+  if (t === "d1") loadD1();
 }
 
 // R2 路径变化时重新加载文件列表

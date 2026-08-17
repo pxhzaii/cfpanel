@@ -324,6 +324,7 @@ async function openDeployments(p: CfPagesProject) {
   pagesDeployments.value = [];
   envVars.value = {};
   pagesBindings.value = { kv: [], r2: [], d1: [] };
+  pagesBindingsTarget.value = "production";
   try {
     pagesDeployments.value = await listPagesDeployments(p.name);
   } catch (e) {

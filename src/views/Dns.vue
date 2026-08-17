@@ -84,7 +84,7 @@ function openEdit(r: CfDnsRecord) {
       ? r.name.slice(0, -(zoneName.length + 1))
       : r.name,
     content: r.content,
-    ttl: r.ttl === 1 ? 1 : r.ttl,
+    ttl: r.ttl,
     proxied: r.proxied,
     comment: r.comment ?? "",
   };
@@ -293,12 +293,12 @@ onMounted(loadZones);
   color: #ff7a6e;
   font-size: 13px;
 }
-.zone {
+.zone-bar {
   display: flex;
   gap: 8px;
 }
-.zone select,
-.filter {
+.zone-bar select,
+.zone-bar .filter {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -307,13 +307,13 @@ onMounted(loadZones);
   font-size: 14px;
   outline: none;
 }
-.zone select {
+.zone-bar select {
   flex: 1;
 }
 .filter {
   flex: 1;
 }
-.records-meta {
+.zone-meta {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -379,7 +379,6 @@ onMounted(loadZones);
 .t-txt {
   background: #9ece6a;
 }
-.t-srv,
 .t-srv {
   background: #73daca;
 }
@@ -407,11 +406,6 @@ onMounted(loadZones);
   font-size: 12px;
   color: #8b95a9;
   word-break: break-all;
-  margin-top: 2px;
-}
-.rec-meta {
-  font-size: 11px;
-  color: #5d6879;
   margin-top: 2px;
 }
 .rec-ops {

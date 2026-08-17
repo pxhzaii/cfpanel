@@ -83,8 +83,8 @@ onMounted(load);
     <section class="card">
       <h3>关于</h3>
       <p class="about">
-        CF Panel 是部署在 Cloudflare Pages 的移动端管理面板。访问口令与 API Token 均保存在服务端环境变量，
-        API Token 不会下发到浏览器。
+        CF Panel 是部署在 Cloudflare Pages 的移动端管理面板。账户与密码保存在服务端环境变量（PANEL_USERS），
+        CF API Token 也在服务端使用，不会下发到浏览器。
       </p>
       <button class="logout" @click="onLogout">退出登录</button>
     </section>
