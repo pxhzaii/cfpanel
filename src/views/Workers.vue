@@ -379,39 +379,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Worker 代码弹层 -->
-    <div v-if="workerDetail" class="mask">
-      <div class="sheet">
-        <div class="sheet-head">
-          <h3>{{ workerDetail }}</h3>
-          <button class="close" @click="workerDetail = null">关闭</button>
-        </div>
-        <pre class="code">{{ workerCode || "加载中…" }}</pre>
-      </div>
-    </div>
-
-    <!-- Pages 部署弹层 -->
-    <div v-if="activeProject && projectSubTab === 'deployments'" class="mask">
-      <div class="sheet">
-        <div class="sheet-head">
-          <h3>{{ activeProject.name }} 部署记录</h3>
-          <button class="close" @click="activeProject = null">关闭</button>
-        </div>
-        <div v-if="pagesDeployments.length === 0" class="empty">暂无部署记录</div>
-        <div class="list">
-          <div v-for="d in pagesDeployments" :key="d.id" class="item">
-            <div class="item-main">
-              <div class="item-title">{{ d.environment }} · {{ formatDate(d.created_on) }}</div>
-              <div class="item-sub">{{ d.url }}</div>
-              <div class="item-sub" v-if="d.latest_stage">
-                状态：{{ d.latest_stage.name }}（{{ d.latest_stage.status }}）
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 添加环境变量弹层 -->
     <div v-if="showAddEnv" class="mask" @click.self="showAddEnv = false">
       <div class="sheet">
