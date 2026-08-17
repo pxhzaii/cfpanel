@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '95a15ebd-11a5-40a2-98e9-6e482bb4b400'
-  PropagateID: '95a15ebd-11a5-40a2-98e9-6e482bb4b400'
-  ReservedCode1: '6c5913e4-8818-4892-bb47-9abd8671ca5f'
-  ReservedCode2: '6c5913e4-8818-4892-bb47-9abd8671ca5f'
+  ProduceID: '161e1eff-df17-4db9-817d-e763ecf0a90b'
+  PropagateID: '161e1eff-df17-4db9-817d-e763ecf0a90b'
+  ReservedCode1: '61c9e34f-460b-4ef8-ae4d-27d3447c5f25'
+  ReservedCode2: '61c9e34f-460b-4ef8-ae4d-27d3447c5f25'
 ---
 
 # CF Panel
@@ -33,14 +33,26 @@ AIGC:
 
 | 变量名 | 必填 | 说明 |
 | --- | --- | --- |
-| `PANEL_USERS` | 是 | 面板用户列表，JSON 数组格式，如 `[{"username":"admin","password":"你的密码"}]` |
+| `PANEL_USERS` | 是 | 面板用户列表，JSON 数组格式 |
 | `CF_API_TOKEN` | 是 | Cloudflare API Token，权限见下表 |
 
-`PANEL_USERS` 支持多个用户：
+### `PANEL_USERS` 怎么填
 
-```json
-[{"username":"admin","password":"abc123"},{"username":"friend","password":"xyz789"}]
+就是一个 JSON 数组，最外层 `[ ]`，里面每个用户一个 `{ }`。
+
+**单用户（直接复制下面这行，把密码改成你自己的）：**
+
 ```
+[{"username":"admin","password":"你的密码"}]
+```
+
+**两个用户（用逗号分隔）：**
+
+```
+[{"username":"admin","password":"你的密码"},{"username":"friend","password":"朋友的密码"}]
+```
+
+> 注意：双引号必须是英文双引号 `"`，不能是中文引号。
 
 ## API Token 权限
 
