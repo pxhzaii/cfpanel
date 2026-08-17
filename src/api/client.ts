@@ -197,7 +197,67 @@ export async function listWorkers(params?: PageParams): Promise<CfWorkerScript[]
 }
 
 export async function getWorkerScript(scriptName: string): Promise<string> {
-  return proxy<string>("GET", `${accountPrefix()}/workers/scripts/${scriptName}/content`);
+  // CF API v4 的 /content 端点 GET 已废弃（返回 405），改用 /content/v2
+  // v2 返回 multipart/form-data，包含所有模块代码
+  // 为避免大文件（可能 5MB+）撑爆手机浏览器，只读前 100000 字节
+  const res = await fetch(`/api/proxy/${accountPrefix()}/workers/scripts/${scriptName}/content/v2`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", "X-Panel-Pass": auth.pass ?? "" },
+  });
+
+  if (!res.ok) {
+    return `（获取失败，HTTP ${res.status}）`;
+  }
+
+  const ct = res.headers.get("Content-Type") ?? "";
+
+  // 如果不是 multipart（某些 Worker 返回纯文本），直接取前 50000 字符
+  if (!ct.includes("multipart/form-data")) {
+    const text = await res.text();
+    return text.length > 50000 ? text.slice(0, 50000) + "\n\n// ... 内容过长，已截断 ..." : text;
+  }
+
+  // 读取前 100000 字节用于解析
+  const reader = res.body?.getReader();
+  if (!reader) return "（无法读取响应）";
+
+  let raw = "";
+  let total = 0;
+  const MAX_BYTES = 100000;
+  while (total < MAX_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    raw += new TextDecoder().decode(value, { stream: true });
+    total = raw.length;
+  }
+  await reader.cancel();
+
+  // 解析 multipart，提取各模块
+  const boundary = ct.match(/boundary=([^;]+)/)?.[1] ?? "";
+  const parts = raw.split("--" + boundary).filter((p) => p.trim() && !p.includes("--"));
+  const modules: { name: string; code: string }[] = [];
+
+  for (const part of parts) {
+    const nameMatch = part.match(/filename="([^"]+)"/);
+    const codeStart = part.indexOf("\r\n\r\n");
+    if (nameMatch && codeStart >= 0) {
+      modules.push({ name: nameMatch[1], code: part.slice(codeStart + 4).trim() });
+    }
+  }
+
+  if (modules.length === 0) return raw.slice(0, 50000);
+
+  let result = "";
+  for (const m of modules) {
+    result += `// ===== ${m.name} =====\n`;
+    result += m.code;
+    result += "\n\n";
+    if (result.length > 50000) {
+      result = result.slice(0, 50000) + "\n\n// ... 内容过长，已截断 ...";
+      break;
+    }
+  }
+  return result;
 }
 
 // ---------------- Pages ----------------
