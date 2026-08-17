@@ -31,7 +31,7 @@ import type {
   CfPagesEnvVar,
   CfWorkerSecret,
   CfWorkerBinding,
-  CfPagesBinding,
+  CfPagesBindingEntry,
   CfKvNamespace,
   CfR2Bucket,
   CfD1Database,
@@ -95,9 +95,9 @@ const confirmDeleteEnv = ref<string | null>(null);
 
 // Pages 绑定管理
 const pagesBindings = ref<{
-  kv: CfPagesBinding[];
-  r2: CfPagesBinding[];
-  d1: CfPagesBinding[];
+  kv: CfPagesBindingEntry[];
+  r2: CfPagesBindingEntry[];
+  d1: CfPagesBindingEntry[];
 }>({ kv: [], r2: [], d1: [] });
 const pagesBindingsTarget = ref<"production" | "preview">("production");
 const showAddPagesBinding = ref(false);
@@ -384,10 +384,23 @@ async function loadPagesBindings() {
   try {
     const proj = await getPagesProject(activeProject.value.name);
     const cfg = proj.deployment_configs?.[pagesBindingsTarget.value];
+    // CF API 返回 map 对象（key 为变量名），转换为 UI 数组格式
+    const kvMap = cfg?.kv_namespaces ?? {};
+    const r2Map = cfg?.r2_buckets ?? {};
+    const d1Map = cfg?.d1_databases ?? {};
     pagesBindings.value = {
-      kv: cfg?.kv_namespaces ?? [],
-      r2: cfg?.r2_buckets ?? [],
-      d1: cfg?.d1_databases ?? [],
+      kv: Object.entries(kvMap).map(([variable_name, v]) => ({
+        variable_name,
+        namespace_id: v?.namespace_id,
+      })),
+      r2: Object.entries(r2Map).map(([variable_name, v]) => ({
+        variable_name,
+        bucket_name: v?.name,
+      })),
+      d1: Object.entries(d1Map).map(([variable_name, v]) => ({
+        variable_name,
+        id: v?.id,
+      })),
     };
   } catch (e) {
     error.value = (e as Error).message;
@@ -409,7 +422,7 @@ async function addPagesBinding() {
     const current = [...pagesBindings.value[
       btype === "kv_namespaces" ? "kv" : btype === "r2_buckets" ? "r2" : "d1"
     ]];
-    const newBinding: CfPagesBinding = {
+    const newBinding: CfPagesBindingEntry = {
       variable_name: newPagesBindingVarName.value.trim(),
     };
     if (btype === "kv_namespaces") {
@@ -437,8 +450,16 @@ async function removePagesBinding(btype: "kv" | "r2" | "d1", idx: number) {
     const apiKey =
       btype === "kv" ? "kv_namespaces" : btype === "r2" ? "r2_buckets" : "d1_databases";
     const current = [...pagesBindings.value[btype]];
-    const filtered = current.filter((_, i) => i !== idx);
-    await updatePagesBindings(activeProject.value.name, pagesBindingsTarget.value, apiKey, filtered);
+    // CF API 绑定是合并语义，不能直接整体替换删除，必须显式把删除项设为 null
+    const removed = current[idx];
+    const keep = current.filter((_, i) => i !== idx);
+    await updatePagesBindings(
+      activeProject.value.name,
+      pagesBindingsTarget.value,
+      apiKey,
+      keep,
+      removed ? [removed.variable_name] : []
+    );
     confirmDeletePagesBinding.value = null;
     await loadPagesBindings();
   } catch (e) {

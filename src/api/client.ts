@@ -25,7 +25,8 @@ import type {
   CfWorkerSecret,
   CfWorkerBinding,
   CfWorkerSettings,
-  CfPagesBinding,
+  CfPagesBindingEntry,
+  CfPagesBindingMap,
   CreatePagesProjectParams,
   CreateWorkerScriptParams,
   CfAccount,
@@ -578,17 +579,42 @@ export async function getPagesProject(projectName: string): Promise<CfPagesProje
   return proxy<CfPagesProject>("GET", `${accountPrefix()}/pages/projects/${projectName}`);
 }
 
-/** 更新 Pages 项目绑定（PATCH deployment_configs） */
+/**
+ * 更新 Pages 项目绑定。
+ * CF API 对绑定的 PATCH 是**合并语义**：
+ *   - 传入的 key 会被新增/更新
+ *   - 未传入的 key 会**保留原值**（不会自动删除！）
+ *   - 要删除某个绑定，必须把该 key 显式设为 null
+ *
+ * 因此本函数分两段处理：
+ *   1. keepBindings → 正常放入 map（新增/更新）
+ *   2. removeKeys   → 在 map 中设为 null（删除）
+ */
 export async function updatePagesBindings(
   projectName: string,
   env: "production" | "preview",
   bindingType: "kv_namespaces" | "r2_buckets" | "d1_databases",
-  bindings: CfPagesBinding[]
+  keepBindings: CfPagesBindingEntry[],
+  removeKeys: string[] = []
 ): Promise<unknown> {
+  const map: CfPagesBindingMap = {};
+  for (const b of keepBindings) {
+    const key = b.variable_name;
+    if (bindingType === "kv_namespaces") {
+      map[key] = { namespace_id: b.namespace_id };
+    } else if (bindingType === "r2_buckets") {
+      map[key] = { name: b.bucket_name };
+    } else {
+      map[key] = { id: b.id };
+    }
+  }
+  for (const key of removeKeys) {
+    map[key] = null;
+  }
   const patchBody = {
     deployment_configs: {
       [env]: {
-        [bindingType]: bindings,
+        [bindingType]: map,
       },
     },
   };

@@ -241,20 +241,30 @@ export interface CfWorkerSettings {
   bindings?: CfWorkerBinding[];
 }
 
-/** Pages 绑定条目 */
-export interface CfPagesBinding {
+/** Pages 绑定条目（值对象，用于 UI 展示/编辑） */
+export interface CfPagesBindingEntry {
+  variable_name: string;
   namespace_id?: string;
   bucket_name?: string;
   id?: string;
-  variable_name: string;
 }
+
+/**
+ * Pages 绑定在 CF API 中是 **map 对象** 格式（不是数组！）：
+ *   kv_namespaces: { "TOTP_KV": { namespace_id: "..." } }
+ *   r2_buckets:    { "BIND": { name: "bucket" } }
+ *   d1_databases:  { "BIND": { id: "uuid" } }
+ * 注意 key 是变量名（binding），value 是资源定位字段。
+ * value 为 null 时表示删除该绑定（CF API 合并语义）。
+ */
+export type CfPagesBindingMap = Record<string, { namespace_id?: string; name?: string; id?: string } | null>;
 
 /** Pages 部署配置（含绑定） */
 export interface CfPagesDeploymentConfig {
   env_vars?: Record<string, unknown>;
-  kv_namespaces?: CfPagesBinding[];
-  r2_buckets?: CfPagesBinding[];
-  d1_databases?: CfPagesBinding[];
+  kv_namespaces?: CfPagesBindingMap;
+  r2_buckets?: CfPagesBindingMap;
+  d1_databases?: CfPagesBindingMap;
 }
 
 /** Worker 脚本创建参数 */
