@@ -49,3 +49,5 @@ Cloudflare 管理面板 -浏览器端  部署在cloudflare的pages上
 选择模板  `编辑 Cloudflare Workers`  按图增加所需权限
 ![权限](3.jpg)
 
+## 项目的不足
+项目不能设置环境变量，环境变量传输到cloudflare，cloudflare能看到，但是重新部署后环境变量会丢失，可能是cloudflare官网没有保存的原因。
