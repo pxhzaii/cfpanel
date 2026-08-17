@@ -27,6 +27,7 @@ import {
   deleteD1Database,
   runD1Query,
 } from "../api/client";
+import type { KvValueResult } from "../api/client";
 import type {
   CfKvNamespace,
   CfKvKey,
@@ -46,6 +47,7 @@ const kvKeys = ref<CfKvKey[]>([]);
 const kvPrefix = ref("");
 const activeNs = ref<CfKvNamespace | null>(null);
 const kvValue = ref("");
+const kvValueBinary = ref<{ type: string; size: number; dataUrl: string } | null>(null);
 const kvValueKey = ref("");
 const kvNewKey = ref("");
 const kvNewValue = ref("");
@@ -148,6 +150,7 @@ function closeKvSheet() {
   kvValueKey.value = "";
   kvNewKey.value = "";
   kvNewValue.value = "";
+  kvValueBinary.value = null;
 }
 
 const kvEditValue = computed({
@@ -228,8 +231,15 @@ async function openKvValue(key: string) {
   if (!activeNs.value) return;
   kvValueKey.value = key;
   kvValue.value = "加载中…";
+  kvValueBinary.value = null;
   try {
-    kvValue.value = await getKvValue(activeNs.value.id, key);
+    const result: KvValueResult = await getKvValue(activeNs.value.id, key);
+    if (result.text !== undefined) {
+      kvValue.value = result.text;
+    } else if (result.binary) {
+      kvValue.value = "";
+      kvValueBinary.value = result.binary;
+    }
   } catch (e) {
     kvValue.value = (e as Error).message;
   }
@@ -1054,7 +1064,13 @@ onMounted(() => {
             Key 名称
             <input v-model="kvNewKey" placeholder="key 名" />
           </label>
-          <label>
+          <template v-if="kvValueBinary">
+            <div class="kv-binary-preview">
+              <img :src="kvValueBinary.dataUrl" alt="预览" style="max-width: 100%; max-height: 200px; border-radius: 8px;" />
+              <div class="item-sub">类型：{{ kvValueBinary.type }} · 大小：{{ (kvValueBinary.size / 1024).toFixed(1) }} KB</div>
+            </div>
+          </template>
+          <label v-else>
             Value
             <textarea v-model="kvEditValue" rows="6" placeholder="值内容"></textarea>
           </label>

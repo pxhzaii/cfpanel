@@ -316,11 +316,24 @@ export async function listKvKeys(namespaceId: string, prefix?: string): Promise<
 }
 
 /**
+ * KV 取值结果：文本值或二进制信息
+ */
+export interface KvValueResult {
+  text?: string;         // 文本内容（含纯文本、JSON 等）
+  binary?: {             // 二进制内容信息
+    type: string;        // 原始 Content-Type
+    size: number;        // 字节数
+    dataUrl: string;     // base64 data URL（可直接用于 <img> 等）
+  };
+}
+
+/**
  * 获取 KV 键值。
  * KV API 返回纯文本/二进制 body（非 CF 标准 JSON 包装），不能用 proxy()。
- * 对二进制内容（图片等）返回提示信息而非乱码。
+ * KV API 对所有值都返回 application/octet-stream，不能靠 Content-Type 区分，
+ * 改为：先拿 arrayBuffer，尝试 UTF-8 解码——成功则当文本，失败则当二进制转 base64 预览。
  */
-export async function getKvValue(namespaceId: string, key: string): Promise<string> {
+export async function getKvValue(namespaceId: string, key: string): Promise<KvValueResult> {
   const pass = auth.pass;
   const panelUser = auth.panelUser;
   if (!pass || !panelUser) throw new ApiError(401, "未登录");
@@ -337,14 +350,22 @@ export async function getKvValue(namespaceId: string, key: string): Promise<stri
     } catch { /* 非 JSON 响应 */ }
     throw new ApiError(res.status, msg);
   }
+  const buf = await res.arrayBuffer();
   const ct = res.headers.get("Content-Type") ?? "";
-  // 二进制内容（图片、octet-stream 等）无法当文本显示
-  if (ct.includes("octet-stream") || ct.includes("image/") || ct.includes("video/") || ct.includes("audio/")) {
-    const buf = await res.arrayBuffer();
-    const sizeKB = (buf.byteLength / 1024).toFixed(1);
-    return `（二进制内容，类型：${ct || "未知"}，大小：${sizeKB} KB，无法在文本中显示）`;
+  // 尝试 UTF-8 解码：如果不含非法字节则当文本
+  try {
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    const text = decoder.decode(buf);
+    return { text };
+  } catch {
+    // 解码失败 = 真二进制，转 base64 data URL
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const b64 = btoa(binary);
+    const mime = ct.includes("image/") ? ct : "image/x-icon";
+    return { binary: { type: ct, size: buf.byteLength, dataUrl: `data:${mime};base64,${b64}` } };
   }
-  return await res.text();
 }
 
 export async function putKvValue(namespaceId: string, key: string, value: string): Promise<unknown> {
