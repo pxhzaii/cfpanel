@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'c238c46b-1179-4daa-bffd-aa2c64fa4d75'
-  PropagateID: 'c238c46b-1179-4daa-bffd-aa2c64fa4d75'
-  ReservedCode1: 'cf43b449-6e56-4ee1-8081-779d72e8f39f'
-  ReservedCode2: 'cf43b449-6e56-4ee1-8081-779d72e8f39f'
+  ProduceID: '8e62626a-631a-4d80-8462-195c9bb5c300'
+  PropagateID: '8e62626a-631a-4d80-8462-195c9bb5c300'
+  ReservedCode1: 'e060d204-71e2-419a-9bea-e22dec38014a'
+  ReservedCode2: 'e060d204-71e2-419a-9bea-e22dec38014a'
 ---
 
 # CF Panel
@@ -65,13 +65,15 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 ## 重新部署说明
 
-面板的"重新部署"功能通过 **GitHub API 推送空 commit** 来触发 Cloudflare Pages 的 GitHub webhook 自动部署。这种部署方式会正确继承所有环境变量和绑定，不会出现 ad_hoc 部署导致环境变量丢失的问题。
+面板的"重新部署"功能通过 **GitHub API 推送 commit** 来触发 Cloudflare Pages 的 GitHub webhook 自动部署。
+
+**环境变量安全机制**：通过 API 设置的环境变量统一使用 `secret_text`（加密存储）类型。CF Pages 部署时会用部署记录中的环境变量快照覆盖项目级配置，实测发现 `plain_text` 类型变量在部署后会被清空，而 `secret_text` 类型能正确保留。面板在触发部署前会保存环境变量快照，部署完成后自动恢复（统一为 `secret_text` 类型），确保不丢失。
 
 前提条件：
 1. Pages 项目已连接 GitHub 仓库
 2. 已配置 `GH_TOKEN` 环境变量（GitHub Token，需 repo 权限）
 
-如果项目未连接 GitHub 仓库，将回退到 ad_hoc 部署方式，并在部署完成后自动恢复环境变量配置。
+如果项目未连接 GitHub 仓库，将回退到 ad_hoc 部署方式，同样在部署完成后自动恢复环境变量配置。
 
 ## 部署步骤
 
