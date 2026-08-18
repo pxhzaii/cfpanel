@@ -573,7 +573,27 @@ const selectedPermIds = ref<string[]>([]);
 const expiresInDays = ref<number>(0); // 0 = 永不过期
 const creating = ref(false);
 const createdTokenValue = ref<string | null>(null);
-const copiedToClipboard = ref(false);
+// 复制状态：创建和轮换各自独立，避免快速切换时状态错乱
+const copiedCreate = ref(false);
+const copiedRotate = ref(false);
+
+async function copyText(text: string, which: "create" | "rotate" = "create") {
+  const flag = which === "create" ? copiedCreate : copiedRotate;
+  try {
+    await navigator.clipboard.writeText(text);
+    flag.value = true;
+    setTimeout(() => { flag.value = false; }, 2000);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    flag.value = true;
+    setTimeout(() => { flag.value = false; }, 2000);
+  }
+}
 
 // 权限过滤分类
 type PermFilter = "" | "dns" | "workers" | "database" | "custom";
@@ -975,23 +995,6 @@ async function handleRotate(tokenId: string) {
   }
 }
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    copiedToClipboard.value = true;
-    setTimeout(() => { copiedToClipboard.value = false; }, 2000);
-  } catch {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    copiedToClipboard.value = true;
-    setTimeout(() => { copiedToClipboard.value = false; }, 2000);
-  }
-}
-
 function closeCreateModal() {
   showCreate.value = false;
   createdTokenValue.value = null;
@@ -1000,6 +1003,7 @@ function closeCreateModal() {
   expiresInDays.value = 0;
   permFilter.value = "";
   error.value = "";
+  copiedCreate.value = false;
 }
 
 function formatDate(s?: string | null): string {
@@ -1035,22 +1039,30 @@ function permLevelColor(level: "read" | "write" | "other"): string {
   }
 }
 
-/** 获取 Token 的权限信息（含读写级别，显示中文名） */
-function getTokenPerms(token: CfApiToken): Array<{ name: string; level: "read" | "write" | "other" }> {
-  const result: Array<{ name: string; level: "read" | "write" | "other" }> = [];
-  const seen = new Set<string>();
-  for (const policy of token.policies ?? []) {
-    for (const pg of policy.permission_groups ?? []) {
-      if (seen.has(pg.id)) continue;
-      seen.add(pg.id);
-      const found = permissionGroups.value.find((p) => p.id === pg.id);
-      if (found) {
-        result.push({ name: permNameCN(found.name), level: permLevel(found) });
+/** Token 权限信息缓存（避免模板中重复计算） */
+interface TokenPermInfo {
+  name: string;
+  level: "read" | "write" | "other";
+}
+const tokenPermsCache = computed<Map<string, TokenPermInfo[]>>(() => {
+  const map = new Map<string, TokenPermInfo[]>();
+  for (const token of tokens.value) {
+    const result: TokenPermInfo[] = [];
+    const seen = new Set<string>();
+    for (const policy of token.policies ?? []) {
+      for (const pg of policy.permission_groups ?? []) {
+        if (seen.has(pg.id)) continue;
+        seen.add(pg.id);
+        const found = permissionGroups.value.find((p) => p.id === pg.id);
+        if (found) {
+          result.push({ name: permNameCN(found.name), level: permLevel(found) });
+        }
       }
     }
+    map.set(token.id, result);
   }
-  return result;
-}
+  return map;
+});
 
 function statusColor(status: string): string {
   switch (status) {
@@ -1107,9 +1119,9 @@ onMounted(() => {
           <span v-if="t.expires_on">过期：{{ formatDate(t.expires_on) }}</span>
           <span v-else>永不过期</span>
         </div>
-        <div v-if="getTokenPerms(t).length" class="token-perms">
+        <div v-if="(tokenPermsCache.get(t.id) ?? []).length" class="token-perms">
           <span
-            v-for="p in getTokenPerms(t)"
+            v-for="p in (tokenPermsCache.get(t.id) ?? [])"
             :key="p.name"
             class="perm-tag"
             :style="{ color: permLevelColor(p.level), background: permLevelColor(p.level) + '1f' }"
@@ -1139,8 +1151,8 @@ onMounted(() => {
           </div>
           <div class="token-value-box">
             <code>{{ createdTokenValue }}</code>
-            <button class="btn-copy" @click="copyText(createdTokenValue)">
-              {{ copiedToClipboard ? "已复制" : "复制" }}
+            <button class="btn-copy" @click="copyText(createdTokenValue, 'create')">
+              {{ copiedCreate ? "已复制" : "复制" }}
             </button>
           </div>
           <button class="btn-done" @click="closeCreateModal">完成</button>
@@ -1290,8 +1302,8 @@ onMounted(() => {
         <div class="result-warn">⚠️ 请立即复制保存，关闭后无法再次查看。</div>
         <div class="token-value-box">
           <code>{{ rotatedValue }}</code>
-          <button class="btn-copy" @click="copyText(rotatedValue)">
-            {{ copiedToClipboard ? "已复制" : "复制" }}
+          <button class="btn-copy" @click="copyText(rotatedValue, 'rotate')">
+            {{ copiedRotate ? "已复制" : "复制" }}
           </button>
         </div>
         <button class="btn-done" @click="rotatedValue = null">完成</button>

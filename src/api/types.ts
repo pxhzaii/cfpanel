@@ -345,6 +345,8 @@ export interface CfTokenPermissionGroup {
   id: string;
   name: string;
   scopes: string[];
+  description?: string;
+  category?: string;
 }
 
 /** Token 策略中的资源组引用 */
@@ -390,6 +392,12 @@ export interface CreateApiTokenParams {
     ip?: { in?: string[]; not_in?: string[] };
   };
   expires_on?: string | null;
+}
+
+/** Token 验证结果 */
+export interface CfApiTokenVerifyResult {
+  id: string;
+  status: string;
 }
 
 /** Token 轮换后的响应（包含明文 value） */

@@ -34,6 +34,7 @@ import type {
   DnsRecordForm,
   CfApiToken,
   CfApiTokenValue,
+  CfApiTokenVerifyResult,
   CfTokenPermissionGroup,
   CreateApiTokenParams,
 } from "./types";
@@ -1023,8 +1024,8 @@ export async function rotateApiTokenValue(tokenId: string): Promise<CfApiTokenVa
   return proxy<CfApiTokenValue>("PUT", `user/tokens/${tokenId}/value`);
 }
 
-export async function verifyApiToken(): Promise<{ id: string; status: string }[]> {
-  return proxy<{ id: string; status: string }[]>("GET", "user/tokens/verify");
+export async function verifyApiToken(): Promise<CfApiTokenVerifyResult> {
+  return proxy<CfApiTokenVerifyResult>("GET", "user/tokens/verify");
 }
 
 export async function listTokenPermissionGroups(): Promise<CfTokenPermissionGroup[]> {
