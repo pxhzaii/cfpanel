@@ -119,13 +119,9 @@ async function handle<T>(res: Response): Promise<T> {
       `请求失败（HTTP ${res.status}）`;
     throw new ApiError(res.status, msg);
   }
-  // CF API 在某些操作（如部署查询）成功后可能返回 result: null，
-  // 调用方直接访问 .name 等属性会抛 "Cannot read properties of null"。
-  // 在此统一拦截，抛出明确的错误信息。
-  if (data.result === null || data.result === undefined) {
-    throw new ApiError(res.status, "Cloudflare API 返回了空结果，项目可能不存在或已被删除");
-  }
-  return data.result;
+  // CF API 在某些操作（如 DELETE、ad_hoc 部署）成功时返回 result: null，
+  // 这是正常行为，不应报错。调用方需自行处理可能为 null 的 result。
+  return data.result as T;
 }
 
 /** 通用代理请求 */

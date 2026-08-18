@@ -379,11 +379,18 @@ async function triggerDeploy() {
   deploying.value = true;
   try {
     const result = await createPagesDeployment(activeProject.value.name);
-    // 显示部署触发结果消息
+    // 显示部署触发结果消息（成功提示，5 秒后自动消失）
     error.value = result.message;
-    // 等待几秒后刷新部署列表
+    setTimeout(() => {
+      if (error.value === result.message) error.value = "";
+    }, 5000);
+    // 等待几秒后刷新部署列表（失败时不覆盖成功提示）
     await new Promise((r) => setTimeout(r, 3000));
-    pagesDeployments.value = await listPagesDeployments(activeProject.value.name);
+    try {
+      pagesDeployments.value = await listPagesDeployments(activeProject.value.name);
+    } catch {
+      // 刷新列表失败不影响成功提示
+    }
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
