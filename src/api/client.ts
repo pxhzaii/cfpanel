@@ -119,6 +119,12 @@ async function handle<T>(res: Response): Promise<T> {
       `请求失败（HTTP ${res.status}）`;
     throw new ApiError(res.status, msg);
   }
+  // CF API 在某些操作（如部署查询）成功后可能返回 result: null，
+  // 调用方直接访问 .name 等属性会抛 "Cannot read properties of null"。
+  // 在此统一拦截，抛出明确的错误信息。
+  if (data.result === null || data.result === undefined) {
+    throw new ApiError(res.status, "Cloudflare API 返回了空结果，项目可能不存在或已被删除");
+  }
   return data.result;
 }
 
@@ -288,7 +294,8 @@ export async function listPagesProjects(): Promise<CfPagesProject[]> {
 }
 
 export async function listPagesDeployments(projectName: string): Promise<CfPagesDeployment[]> {
-  return proxy<CfPagesDeployment[]>("GET", `${accountPrefix()}/pages/projects/${projectName}/deployments`);
+  const result = await proxy<CfPagesDeployment[]>("GET", `${accountPrefix()}/pages/projects/${projectName}/deployments`);
+  return result ?? [];
 }
 
 // ---------------- KV ----------------
@@ -594,11 +601,11 @@ export async function getPagesEnvVars(projectName: string, env: "production" | "
  * 而 secret_text 类型变量能正确保留。因此本函数强制使用 secret_text 类型。
  */
 export async function setPagesEnvVar(projectName: string, varName: string, value: string, env: "production" | "preview" = "production"): Promise<unknown> {
-  const proj = await getPagesProject(projectName);
-  const envVars = (proj.deployment_configs?.[env]?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
-  envVars[varName] = { value, type: "secret_text" };
+  // CF API 对 env_vars 的 PATCH 是合并语义：传入的 key 新增/更新，未传入的 key 保留原值。
+  // 因此只需提交正在设置的变量，不要把 getPagesProject 返回的其他 secret_text 变量
+  // （其 value 在 API 响应中为空）一起 PATCH 回去，避免用空值覆盖已有密钥。
   return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, {
-    deployment_configs: { [env]: { env_vars: envVars } },
+    deployment_configs: { [env]: { env_vars: { [varName]: { value, type: "secret_text" } } } },
   });
 }
 
@@ -609,11 +616,9 @@ export async function setPagesEnvVar(projectName: string, varName: string, value
  * 严禁使用 DELETE /environments/{env}/vars/{name} 端点——实测它会误删整个 Pages 项目！
  */
 export async function deletePagesEnvVar(projectName: string, varName: string, env: "production" | "preview" = "production"): Promise<unknown> {
-  const proj = await getPagesProject(projectName);
-  const envVars = (proj.deployment_configs?.[env]?.env_vars ?? {}) as Record<string, CfPagesEnvVar | null>;
-  envVars[varName] = null;
+  // 只提交要删除的变量（设为 null），不把其他变量带回，避免覆盖已有 secret_text 值。
   return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, {
-    deployment_configs: { [env]: { env_vars: envVars } },
+    deployment_configs: { [env]: { env_vars: { [varName]: null } } },
   });
 }
 
@@ -652,6 +657,9 @@ export async function createPagesDeployment(projectName: string): Promise<{ mess
 
   // 0. 部署前保存项目级配置快照（用于部署后恢复）
   const proj = await getPagesProject(projectName);
+  if (!proj) {
+    throw new ApiError(404, `项目 ${projectName} 不存在或已被删除`);
+  }
   const savedEnvVars = (proj.deployment_configs?.production?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
   const savedKv = proj.deployment_configs?.production?.kv_namespaces ?? {};
   const savedR2 = proj.deployment_configs?.production?.r2_buckets ?? {};
@@ -703,7 +711,7 @@ export async function createPagesDeployment(projectName: string): Promise<{ mess
       await new Promise((r) => setTimeout(r, 5000));
       try {
         const deployments = await proxy<CfPagesDeployment[]>("GET", `${accountPrefix()}/pages/projects/${projectName}/deployments`, undefined, { per_page: 1 });
-        const latest = deployments[0];
+        const latest = deployments?.[0];
         const stage = latest?.latest_stage;
         if (stage?.status === "success" || stage?.status === "failure" || stage?.status === "canceled") {
           break;
@@ -764,6 +772,9 @@ async function createPagesDeploymentAdHoc(
   // 如果没有传入快照，则重新获取
   if (!savedEnvVars) {
     const proj = await getPagesProject(projectName);
+    if (!proj) {
+      throw new ApiError(404, `项目 ${projectName} 不存在或已被删除`);
+    }
     savedEnvVars = (proj.deployment_configs?.production?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
     savedKv = proj.deployment_configs?.production?.kv_namespaces ?? {};
     savedR2 = proj.deployment_configs?.production?.r2_buckets ?? {};
