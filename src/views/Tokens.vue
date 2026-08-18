@@ -12,6 +12,552 @@ import type {
   CfTokenPermissionGroup,
 } from "../api/types";
 
+// ---- 权限名中文映射表 ----
+// key = CF API 返回的英文权限名，value = 中文描述
+const PERM_CN: Record<string, string> = {
+  // --- AI 相关 ---
+  "AI Gateway Metadata Read": "AI 网关 元数据读取",
+  "AI Gateway Read": "AI 网关 读取",
+  "AI Gateway Run": "AI 网关 运行",
+  "AI Gateway Write": "AI 网关 写入",
+  "AI Search Index Engine": "AI 搜索 索引引擎",
+  "AI Search Metadata Read": "AI 搜索 元数据读取",
+  "AI Search Read": "AI 搜索 读取",
+  "AI Search Run": "AI 搜索 运行",
+  "AI Search Write": "AI 搜索 写入",
+  "Workers AI Metadata Read": "Workers AI 元数据读取",
+  "Workers AI Read": "Workers AI 读取",
+  "Workers AI Write": "Workers AI 写入",
+  "Auto Rag Read": "Auto RAG 读取",
+  "Auto Rag Write": "Auto RAG 写入",
+  "Auto Rag Write Run Engine": "Auto RAG 写入运行引擎",
+  "Browser Run Read": "浏览器运行 读取",
+  "Browser Run Write": "浏览器运行 写入",
+  "Firewall for AI Read": "AI 防火墙 读取",
+  "Firewall for AI Write": "AI 防火墙 写入",
+  "AI Audit Read": "AI 审计 读取",
+  "AI Audit Write": "AI 审计 写入",
+
+  // --- Access (Zero Trust) ---
+  "Access: Apps Read": "Access 应用 读取",
+  "Access: Apps Revoke": "Access 应用 撤销",
+  "Access: Apps Write": "Access 应用 写入",
+  "Access: Apps and Policies Read": "Access 应用和策略 读取",
+  "Access: Apps and Policies Revoke": "Access 应用和策略 撤销",
+  "Access: Apps and Policies Write": "Access 应用和策略 写入",
+  "Access: Audit Logs Read": "Access 审计日志 读取",
+  "Access: Custom Pages Read": "Access 自定义页面 读取",
+  "Access: Custom Pages Write": "Access 自定义页面 写入",
+  "Access: Device Posture Read": "Access 设备状态 读取",
+  "Access: Device Posture Write": "Access 设备状态 写入",
+  "Access: Groups Read": "Access 用户组 读取",
+  "Access: Groups Write": "Access 用户组 写入",
+  "Access: Identity Providers Read": "Access 身份提供者 读取",
+  "Access: Identity Providers Write": "Access 身份提供者 写入",
+  "Access: Keys Read": "Access 密钥 读取",
+  "Access: Keys Write": "Access 密钥 写入",
+  "Access: Mutual TLS Certificates Read": "Access 双向 TLS 证书 读取",
+  "Access: Mutual TLS Certificates Write": "Access 双向 TLS 证书 写入",
+  "Access: Organizations Read": "Access 组织 读取",
+  "Access: Organizations Revoke": "Access 组织 撤销",
+  "Access: Organizations Write": "Access 组织 写入",
+  "Access: Organizations, Identity Providers, and Groups Read": "Access 组织/身份提供者/用户组 读取",
+  "Access: Organizations, Identity Providers, and Groups Revoke": "Access 组织/身份提供者/用户组 撤销",
+  "Access: Organizations, Identity Providers, and Groups Write": "Access 组织/身份提供者/用户组 写入",
+  "Access: Policies Read": "Access 策略 读取",
+  "Access: Policies Write": "Access 策略 写入",
+  "Access: Policy Test Read": "Access 策略测试 读取",
+  "Access: Policy Test Write": "Access 策略测试 写入",
+  "Access: Population Read": "Access 人群 读取",
+  "Access: Population Write": "Access 人群 写入",
+  "Access: SAML Certificates Read": "Access SAML 证书 读取",
+  "Access: SAML Certificates Write": "Access SAML 证书 写入",
+  "Access: SCIM Logs Read": "Access SCIM 日志 读取",
+  "Access: SSH Auditing Read": "Access SSH 审计 读取",
+  "Access: SSH Auditing Write": "Access SSH 审计 写入",
+  "Access: Service Tokens Read": "Access 服务令牌 读取",
+  "Access: Service Tokens Write": "Access 服务令牌 写入",
+  "Access: Tags Read": "Access 标签 读取",
+  "Access: Tags Write": "Access 标签 写入",
+  "Access: Users Read": "Access 用户 读取",
+  "Access: Users Write": "Access 用户 写入",
+
+  // --- 账户级设置 ---
+  "Account API Gateway": "账户 API 网关",
+  "Account API Gateway Read": "账户 API 网关 读取",
+  "Account API Tokens Read": "账户 API 令牌 读取",
+  "Account API Tokens Write": "账户 API 令牌 写入",
+  "Account Abuse Protection PII Read": "账户滥用保护 PII 读取",
+  "Account Analytics Read": "账户分析 读取",
+  "Account Custom Asset Read": "账户自定义资产 读取",
+  "Account Custom Asset Write": "账户自定义资产 写入",
+  "Account Custom Error Rules Read": "账户自定义错误规则 读取",
+  "Account Custom Error Rules Write": "账户自定义错误规则 写入",
+  "Account Custom Pages Read": "账户自定义页面 读取",
+  "Account Custom Pages Write": "账户自定义页面 写入",
+  "Account DNS Settings Read": "账户 DNS 设置 读取",
+  "Account DNS Settings Write": "账户 DNS 设置 写入",
+  "Account Firewall Access Rules Read": "账户防火墙访问规则 读取",
+  "Account Firewall Access Rules Write": "账户防火墙访问规则 写入",
+  "Account Rule Lists Read": "账户规则列表 读取",
+  "Account Rule Lists Write": "账户规则列表 写入",
+  "Account Rulesets Read": "账户规则集 读取",
+  "Account Rulesets Write": "账户规则集 写入",
+  "Account Security Center Insights Read": "账户安全中心洞察 读取",
+  "Account Security Center Insights Write": "账户安全中心洞察 写入",
+  "Account Settings Read": "账户设置 读取",
+  "Account Settings Write": "账户设置 写入",
+  "Account WAF Read": "账户 WAF 读取",
+  "Account WAF Write": "账户 WAF 写入",
+  "Account Waiting Rooms Read": "账户等候室 读取",
+  "Account: SSL and Certificates Read": "账户 SSL 和证书 读取",
+  "Account: SSL and Certificates Write": "账户 SSL 和证书 写入",
+
+  // --- 地址映射 / 代理 ---
+  "Address Maps Read": "地址映射 读取",
+  "Address Maps Write": "地址映射 写入",
+
+  // --- 代理 / Agent ---
+  "Agent Memory Write": "Agent 记忆 写入",
+  "Agents Gateway Read": "Agent 网关 读取",
+  "Agents Gateway Run": "Agent 网关 运行",
+  "Agents Gateway Write": "Agent 网关 写入",
+  "CF Agents Read": "CF Agent 读取",
+  "CF Agents Write": "CF Agent 写入",
+
+  // --- 其他账户级服务 ---
+  "Allow Request Tracer Read": "请求追踪器 读取",
+  "Application Security Reports Read": "应用安全报告 读取",
+  "Artifacts Read": "制品 读取",
+  "Artifacts Write": "制品 写入",
+  "Billing Read": "账单 读取",
+  "Billing Write": "账单 写入",
+  "CASB Read": "CASB 读取",
+  "CASB Write": "CASB 写入",
+  "Calls Read": "Calls 读取",
+  "Calls Write": "Calls 写入",
+  "China Network Steering Read": "中国网络引导 读取",
+  "China Network Steering Write": "中国网络引导 写入",
+  "Cloud Email Security: Read": "云邮件安全 读取",
+  "Cloud Email Security: Write": "云邮件安全 写入",
+  "Cloudchamber Read": "Cloudchamber 读取",
+  "Cloudchamber Write": "Cloudchamber 写入",
+  "Cloudflare CDS Compute Account Read": "CF CDS 计算 读取",
+  "Cloudflare CDS Compute Account Write": "CF CDS 计算 写入",
+  "Cloudflare DEX": "CF DEX",
+  "Cloudflare DEX Read": "CF DEX 读取",
+  "Cloudflare DEX Write": "CF DEX 写入",
+  "Cloudflare One Connector Monitoring: cloudflared": "CF One 连接器监控 cloudflared",
+  "Cloudflare One Connector: WARP Read": "CF One 连接器 WARP 读取",
+  "Cloudflare One Connector: WARP Write": "CF One 连接器 WARP 写入",
+  "Cloudflare One Connector: cloudflared Read": "CF One 连接器 cloudflared 读取",
+  "Cloudflare One Connector: cloudflared Write": "CF One 连接器 cloudflared 写入",
+  "Cloudflare One Connectors Read": "CF One 连接器 读取",
+  "Cloudflare One Connectors Write": "CF One 连接器 写入",
+  "Cloudflare One Networks Read": "CF One 网络 读取",
+  "Cloudflare One Networks Write": "CF One 网络 写入",
+  "Cloudflare Tunnel Read": "CF 隧道 读取",
+  "Cloudflare Tunnel Write": "CF 隧道 写入",
+  "Cloudflare Zero Trust Secure DNS Locations Write": "CF Zero Trust 安全 DNS 位置 写入",
+  "Cloudforce One Read": "Cloudforce One 读取",
+  "Cloudforce One Write": "Cloudforce One 写入",
+  "Connectivity Directory Admin": "连接目录 管理",
+  "Connectivity Directory Bind": "连接目录 绑定",
+  "Connectivity Directory Read": "连接目录 读取",
+  "Constellation Read": "Constellation 读取",
+  "Constellation Write": "Constellation 写入",
+
+  // --- D1 数据库 ---
+  "D1 Metadata Read": "D1 元数据读取",
+  "D1 Read": "D1 读取",
+  "D1 Write": "D1 写入",
+
+  // --- DDoS 防护 ---
+  "DDoS Botnet Feed Read": "DDoS 僵尸网络源 读取",
+  "DDoS Botnet Feed Write": "DDoS 僵尸网络源 写入",
+  "DDoS Protection Read": "DDoS 防护 读取",
+  "DDoS Protection Write": "DDoS 防护 写入",
+  "L4 DDoS Managed Ruleset Read": "L4 DDoS 托管规则集 读取",
+  "L4 DDoS Managed Ruleset Write": "L4 DDoS 托管规则集 写入",
+  "HTTP DDoS Managed Ruleset Read": "HTTP DDoS 托管规则集 读取",
+  "HTTP DDoS Managed Ruleset Write": "HTTP DDoS 托管规则集 写入",
+
+  // --- DLS ---
+  "DLS: Read": "DLS 读取",
+  "DLS: Write": "DLS 写入",
+
+  // --- DNS ---
+  "DNS Firewall Read": "DNS 防火墙 读取",
+  "DNS Firewall Write": "DNS 防火墙 写入",
+  "DNS View Read": "DNS 视图 读取",
+  "DNS View Write": "DNS 视图 写入",
+  "DNS Read": "DNS 读取",
+  "DNS Write": "DNS 写入",
+  "Zone DNS Settings Read": "区域 DNS 设置 读取",
+  "Zone DNS Settings Write": "区域 DNS 设置 写入",
+
+  // --- Disable ESC ---
+  "Disable ESC Read": "禁用 ESC 读取",
+  "Disable ESC Write": "禁用 ESC 写入",
+
+  // --- 邮件路由 ---
+  "Email Routing Account Rules Read": "邮件路由账户规则 读取",
+  "Email Routing Addresses Read": "邮件路由地址 读取",
+  "Email Routing Addresses Write": "邮件路由地址 写入",
+  "Email Routing Suppressions Read": "邮件路由屏蔽 读取",
+  "Email Routing Suppressions Write": "邮件路由屏蔽 写入",
+  "Email Routing Rules Read": "邮件路由规则 读取",
+  "Email Routing Rules Write": "邮件路由规则 写入",
+  "Email Security DMARC Reports Read": "邮件安全 DMARC 报告 读取",
+  "Email Security DMARC Reports Write": "邮件安全 DMARC 报告 写入",
+  "Email Sending Read": "邮件发送 读取",
+  "Email Sending Write": "邮件发送 写入",
+
+  // --- 字段提取 / 欺诈 ---
+  "Field Extractors Read": "字段提取器 读取",
+  "Field Extractors Write": "字段提取器 写入",
+  "Fraud Events Write": "欺诈事件 写入",
+  "Fraud Feedback Read": "欺诈反馈 读取",
+  "Fraud Feedback Write": "欺诈反馈 写入",
+  "Fraud Detection Read": "欺诈检测 读取",
+  "Fraud Detection Write": "欺诈检测 写入",
+
+  // --- Flagship ---
+  "Flagship Evaluate": "Flagship 评估",
+  "Flagship Read": "Flagship 读取",
+  "Flagship Write": "Flagship 写入",
+  "Flagship App Bind": "Flagship 应用 绑定",
+  "Flagship App Evaluate": "Flagship 应用 评估",
+  "Flagship App Read": "Flagship 应用 读取",
+  "Flagship App Write": "Flagship 应用 写入",
+
+  // --- HTTP 应用 ---
+  "HTTP Applications Read": "HTTP 应用 读取",
+  "HTTP Applications Write": "HTTP 应用 写入",
+
+  // --- Hyperdrive ---
+  "Hyperdrive Read": "Hyperdrive 读取",
+  "Hyperdrive Write": "Hyperdrive 写入",
+
+  // --- IOT ---
+  "IOT Read": "IoT 读取",
+  "IOT Write": "IoT 写入",
+
+  // --- IP 前缀 ---
+  "IP Prefixes: BGP On Demand Read": "IP 前缀 BGP 按需 读取",
+  "IP Prefixes: BGP On Demand Write": "IP 前缀 BGP 按需 写入",
+  "IP Prefixes: Read": "IP 前缀 读取",
+  "IP Prefixes: Write": "IP 前缀 写入",
+
+  // --- 图片 ---
+  "Images Metadata Read": "图片 元数据读取",
+  "Images Read": "图片 读取",
+  "Images Write": "图片 写入",
+
+  // --- 集成 ---
+  "Integration Write": "集成 写入",
+
+  // --- Intel ---
+  "Intel Read": "Intel 读取",
+  "Intel Write": "Intel 写入",
+
+  // --- 负载均衡 ---
+  "Load Balancers Account Read": "负载均衡账户 读取",
+  "Load Balancers Account Write": "负载均衡账户 写入",
+  "Load Balancers Read": "负载均衡 读取",
+  "Load Balancers Write": "负载均衡 写入",
+  "Load Balancing: Monitors and Pools Read": "负载均衡监控器和池 读取",
+  "Load Balancing: Monitors and Pools Write": "负载均衡监控器和池 写入",
+
+  // --- 日志 ---
+  "Logs Read": "日志 读取",
+  "Logs Write": "日志 写入",
+
+  // --- MCP / Messaging ---
+  "MCP Portals Read": "MCP 门户 读取",
+  "MCP Portals Write": "MCP 门户 写入",
+  "Messaging Edit": "消息 编辑",
+  "Messaging Metadata Read": "消息 元数据读取",
+  "Messaging Read": "消息 读取",
+
+  // --- Magic ---
+  "Magic Firewall Packet Captures - Read PCAPs API": "Magic 防火墙抓包 读取",
+  "Magic Firewall Packet Captures - Write PCAPs API": "Magic 防火墙抓包 写入",
+  "Magic Firewall Read": "Magic 防火墙 读取",
+  "Magic Firewall Write": "Magic 防火墙 写入",
+  "Magic Network Monitoring Admin": "Magic 网络监控 管理",
+  "Magic Network Monitoring Config Read": "Magic 网络监控配置 读取",
+  "Magic Network Monitoring Config Write": "Magic 网络监控配置 写入",
+  "Magic Transit Read": "Magic Transit 读取",
+  "Magic Transit Write": "Magic Transit 写入",
+  "Magic WAN Read": "Magic WAN 读取",
+  "Magic WAN Write": "Magic WAN 写入",
+
+  // --- 大规模 URL 重定向 ---
+  "Mass URL Redirects Read": "批量 URL 重定向 读取",
+  "Mass URL Redirects Write": "批量 URL 重定向 写入",
+
+  // --- MoQ ---
+  "MoQ Read": "MoQ 读取",
+  "MoQ Write": "MoQ 写入",
+
+  // --- 通知 ---
+  "Notifications Read": "通知 读取",
+  "Notifications Write": "通知 写入",
+
+  // --- OAuth ---
+  "OAuth Client Read": "OAuth 客户端 读取",
+  "OAuth Client Write": "OAuth 客户端 写入",
+
+  // --- Page Shield ---
+  "Page Shield": "页面护盾",
+  "Page Shield Read": "页面护盾 读取",
+  "Page Shield Write": "页面护盾 写入",
+  "Domain Page Shield": "域名页面护盾",
+  "Domain Page Shield Read": "域名页面护盾 读取",
+
+  // --- Pages ---
+  "Pages Metadata Read": "Pages 元数据读取",
+  "Pages Read": "Pages 读取",
+  "Pages Write": "Pages 写入",
+
+  // --- Pipelines ---
+  "Pipelines Read": "流水线 读取",
+  "Pipelines Send": "流水线 发送",
+  "Pipelines Write": "流水线 写入",
+
+  // --- Pubsub ---
+  "Pubsub Configuration Read": "Pubsub 配置 读取",
+  "Pubsub Configuration Write": "Pubsub 配置 写入",
+
+  // --- Queues ---
+  "Queues Metadata Read": "队列 元数据读取",
+  "Queues Read": "队列 读取",
+  "Queues Write": "队列 写入",
+
+  // --- Radar ---
+  "Radar Read": "Radar 读取",
+
+  // --- Realtime ---
+  "Realtime": "实时",
+  "Realtime Admin": "实时 管理",
+  "Realtime Read": "实时 读取",
+
+  // --- 注册商域名 ---
+  "Registrar Domains Admin": "注册商域名 管理",
+  "Registrar Domains Read": "注册商域名 读取",
+  "Registrar Sandbox Domains Admin": "注册商沙盒域名 管理",
+  "Registrar Sandbox Domains Read": "注册商沙盒域名 读取",
+
+  // --- 资源库 / 共享 ---
+  "Resource Library Read": "资源库 读取",
+  "Resource Library Write": "资源库 写入",
+  "Resource Sharing Read": "资源共享 读取",
+
+  // --- 规则策略 ---
+  "Rule Policies Read": "规则策略 读取",
+  "Rule Policies Write": "规则策略 写入",
+
+  // --- SCIM / SSO ---
+  "SCIM Provisioning": "SCIM 预配",
+  "SSO Connector Read": "SSO 连接器 读取",
+  "SSO Connector Write": "SSO 连接器 写入",
+
+  // --- 密钥存储 ---
+  "Secrets Store Read": "密钥存储 读取",
+  "Secrets Store Write": "密钥存储 写入",
+
+  // --- Select 配置 ---
+  "Select Configuration Read": "Select 配置 读取",
+  "Select Configuration Write": "Select 配置 写入",
+
+  // --- Stream ---
+  "Stream Metadata Read": "Stream 元数据读取",
+  "Stream Read": "Stream 读取",
+  "Stream Write": "Stream 写入",
+
+  // --- 标签 ---
+  "Tag Read": "标签 读取",
+  "Tag Write": "标签 写入",
+
+  // --- 转换规则 ---
+  "Transform Rules Read": "转换规则 读取",
+  "Transform Rules Write": "转换规则 写入",
+  "Zone Transform Rules Read": "区域转换规则 读取",
+  "Zone Transform Rules Write": "区域转换规则 写入",
+
+  // --- Trust and Safety ---
+  "Trust and Safety Read": "信任与安全 读取",
+  "Trust and Safety Write": "信任与安全 写入",
+
+  // --- Turnstile ---
+  "Turnstile Sites Read": "Turnstile 站点 读取",
+  "Turnstile Sites Write": "Turnstile 站点 写入",
+
+  // --- URL 扫描 ---
+  "URL Scanner Read": "URL 扫描器 读取",
+  "URL Scanner Write": "URL 扫描器 写入",
+
+  // --- Vectorize ---
+  "Vectorize Read": "Vectorize 读取",
+  "Vectorize Write": "Vectorize 写入",
+
+  // --- Websearch ---
+  "Websearch Metadata Read": "Web 搜索 元数据读取",
+  "Websearch Read": "Web 搜索 读取",
+  "Websearch Run": "Web 搜索 运行",
+  "Websearch Write": "Web 搜索 写入",
+
+  // --- Workers 相关 ---
+  "Workers CI Read": "Workers CI 读取",
+  "Workers CI Write": "Workers CI 写入",
+  "Workers Containers Read": "Workers 容器 读取",
+  "Workers Containers Write": "Workers 容器 写入",
+  "Workers KV Storage Metadata Read": "Workers KV 存储 元数据读取",
+  "Workers KV Storage Read": "Workers KV 存储 读取",
+  "Workers KV Storage Write": "Workers KV 存储 写入",
+  "Workers Observability Read": "Workers 可观测性 读取",
+  "Workers Observability Telemetry Write": "Workers 可观测性遥测 写入",
+  "Workers Observability Write": "Workers 可观测性 写入",
+  "Workers R2 Data Catalog Read": "Workers R2 数据目录 读取",
+  "Workers R2 Data Catalog Write": "Workers R2 数据目录 写入",
+  "Workers R2 SQL Read": "Workers R2 SQL 读取",
+  "Workers R2 Storage Metadata Read": "Workers R2 存储 元数据读取",
+  "Workers R2 Storage Read": "Workers R2 存储 读取",
+  "Workers R2 Storage Write": "Workers R2 存储 写入",
+  "Workers R2 Storage Bucket Item Read": "Workers R2 存储桶对象 读取",
+  "Workers R2 Storage Bucket Item Write": "Workers R2 存储桶对象 写入",
+  "Workers Scripts Read": "Workers 脚本 读取",
+  "Workers Scripts Write": "Workers 脚本 写入",
+  "Workers Tail Read": "Workers Tail 读取",
+  "Workers Routes Read": "Workers 路由 读取",
+  "Workers Routes Write": "Workers 路由 写入",
+
+  // --- Zero Trust ---
+  "Zero Trust Read": "Zero Trust 读取",
+  "Zero Trust Report": "Zero Trust 报告",
+  "Zero Trust Resilience Read": "Zero Trust 弹性 读取",
+  "Zero Trust Resilience Write": "Zero Trust 弹性 写入",
+  "Zero Trust Write": "Zero Trust 写入",
+  "Zero Trust: PII Read": "Zero Trust PII 读取",
+  "Zero Trust: Seats Write": "Zero Trust 席位 写入",
+
+  // --- Zone 级别 ---
+  "Zone Custom Asset Read": "区域自定义资产 读取",
+  "Zone Custom Asset Write": "区域自定义资产 写入",
+  "Zone Read": "区域 读取",
+  "Zone Security Center Insights Read": "区域安全中心洞察 读取",
+  "Zone Security Center Insights Write": "区域安全中心洞察 写入",
+  "Zone Settings Read": "区域设置 读取",
+  "Zone Settings Write": "区域设置 写入",
+  "Zone Versioning Read": "区域版本控制 读取",
+  "Zone Versioning Write": "区域版本控制 写入",
+  "Zone WAF Read": "区域 WAF 读取",
+  "Zone WAF Write": "区域 WAF 写入",
+  "Zone Write": "区域 写入",
+  "Domain API Gateway": "域名 API 网关",
+  "Domain API Gateway Read": "域名 API 网关 读取",
+  "Apps Write": "应用 写入",
+
+  // --- 分析 ---
+  "Analytics Read": "分析 读取",
+
+  // --- 机器人管理 ---
+  "Bot Management Feedback Report Read": "机器人管理反馈报告 读取",
+  "Bot Management Feedback Report Write": "机器人管理反馈报告 写入",
+  "Bot Management Read": "机器人管理 读取",
+  "Bot Management Write": "机器人管理 写入",
+
+  // --- 缓存 ---
+  "Cache Purge": "缓存清除",
+  "Cache Settings Read": "缓存设置 读取",
+  "Cache Settings Write": "缓存设置 写入",
+
+  // --- Cloud Connector ---
+  "Cloud Connector Read": "云连接器 读取",
+  "Cloud Connector Write": "云连接器 写入",
+
+  // --- 配置 ---
+  "Config Settings Read": "配置设置 读取",
+  "Config Settings Write": "配置设置 写入",
+
+  // --- 自定义错误/页面 ---
+  "Custom Errors Read": "自定义错误 读取",
+  "Custom Errors Write": "自定义错误 写入",
+  "Custom Pages Read": "自定义页面 读取",
+  "Custom Pages Write": "自定义页面 写入",
+
+  // --- 动态 URL 重定向 ---
+  "Dynamic URL Redirects Read": "动态 URL 重定向 读取",
+  "Dynamic URL Redirects Write": "动态 URL 重定向 写入",
+
+  // --- 防火墙服务 ---
+  "Firewall Services Read": "防火墙服务 读取",
+  "Firewall Services Write": "防火墙服务 写入",
+
+  // --- 健康检查 ---
+  "Health Checks Read": "健康检查 读取",
+  "Health Checks Write": "健康检查 写入",
+
+  // --- 托管 headers ---
+  "Managed headers Read": "托管头 读取",
+  "Managed headers Write": "托管头 写入",
+
+  // --- 源站 ---
+  "Origin Read": "源站 读取",
+  "Origin Write": "源站 写入",
+
+  // --- 页面规则 ---
+  "Page Rules Read": "页面规则 读取",
+  "Page Rules Write": "页面规则 写入",
+
+  // --- Precursor ---
+  "Precursor Read": "Precursor 读取",
+  "Precursor Write": "Precursor 写入",
+
+  // --- 响应压缩 ---
+  "Response Compression Read": "响应压缩 读取",
+  "Response Compression Write": "响应压缩 写入",
+
+  // --- SSL 和证书 ---
+  "SSL and Certificates Read": "SSL 和证书 读取",
+  "SSL and Certificates Write": "SSL 和证书 写入",
+
+  // --- Sanitize ---
+  "Sanitize Read": "数据清洗 读取",
+  "Sanitize Write": "数据清洗 写入",
+
+  // --- Snippets ---
+  "Snippets Read": "代码片段 读取",
+  "Snippets Write": "代码片段 写入",
+
+  // --- 等候室 ---
+  "Waiting Rooms Read": "等候室 读取",
+  "Waiting Rooms Write": "等候室 写入",
+
+  // --- Web3 主机名 ---
+  "Web3 Hostnames Read": "Web3 主机名 读取",
+  "Web3 Hostnames Write": "Web3 主机名 写入",
+
+  // --- Zaraz ---
+  "Zaraz Admin": "Zaraz 管理",
+  "Zaraz Edit": "Zaraz 编辑",
+  "Zaraz Read": "Zaraz 读取",
+
+  // --- User 级别 ---
+  "API Tokens Read": "API 令牌 读取",
+  "API Tokens Write": "API 令牌 写入",
+  "Memberships Read": "成员资格 读取",
+  "Memberships Write": "成员资格 写入",
+  "User Details Read": "用户详情 读取",
+  "User Details Write": "用户详情 写入",
+};
+
+/** 获取权限的中文描述，没有映射时原样返回 */
+function permNameCN(name: string): string {
+  return PERM_CN[name] ?? name;
+}
+
 const tokens = ref<CfApiToken[]>([]);
 const permissionGroups = ref<CfTokenPermissionGroup[]>([]);
 const loading = ref(false);
@@ -30,11 +576,11 @@ const copiedToClipboard = ref(false);
 type PermFilter = "" | "dns" | "workers" | "database" | "custom";
 const permFilter = ref<PermFilter>("");
 
-// 各分类的关键词匹配规则
+  // 各分类的关键词匹配规则（同时匹配英文原名和中文翻译）
 const FILTER_KEYWORDS: Record<Exclude<PermFilter, "">, string[]> = {
-  dns: ["dns"],
-  workers: ["worker", "pages", "script", "kv", "r2", "storage"],
-  database: ["d1", "database", "sql"],
+  dns: ["dns", "域名"],
+  workers: ["worker", "pages", "script", "kv", "r2", "storage", "脚本", "存储", "队列"],
+  database: ["d1", "database", "sql", "数据库"],
   custom: [], // 全部
 };
 
@@ -49,9 +595,11 @@ function setPermFilter(f: PermFilter) {
 
 function matchesFilter(pg: CfTokenPermissionGroup, f: PermFilter): boolean {
   if (!f || f === "custom") return true;
-  const name = pg.name.toLowerCase();
+  // 同时匹配英文原名和中文翻译
+  const nameEN = pg.name.toLowerCase();
+  const nameCN = permNameCN(pg.name).toLowerCase();
   const keywords = FILTER_KEYWORDS[f] ?? [];
-  return keywords.some((kw) => name.includes(kw));
+  return keywords.some((kw) => nameEN.includes(kw) || nameCN.includes(kw));
 }
 
 // 删除确认
@@ -61,7 +609,19 @@ const confirmDeleteId = ref<string | null>(null);
 const confirmRotateId = ref<string | null>(null);
 const rotatedValue = ref<string | null>(null);
 
-// 预设模板（已移除快速模板，只保留自定义）
+/** scope 中文名称映射 */
+const SCOPE_CN: Record<string, string> = {
+  "com.cloudflare.api.account": "账户级权限",
+  "com.cloudflare.api.account.zone": "区域级权限",
+  "com.cloudflare.api.user": "用户级权限",
+  "com.cloudflare.api.account.flagship.app": "Flagship 应用权限",
+  "com.cloudflare.edge.r2.bucket": "R2 存储桶权限",
+};
+
+/** 获取 scope 的中文标签 */
+function scopeLabel(scope: string): string {
+  return SCOPE_CN[scope] ?? scope;
+}
 
 // ---- 权限解析与分组 ----
 
@@ -69,14 +629,37 @@ const rotatedValue = ref<string | null>(null);
 const KNOWN_OPS = [
   "Metadata Read", "Metadata Write",
   "Run Engine", "Send",
+  "Telemetry Write",
   "Read", "Write", "Run", "Edit", "Revoke", "Admin", "Bind", "Purge",
-  "Report", "Telemetry Write", "Action", "Preview", "Trace", "Raw",
+  "Report", "Action", "Preview", "Trace", "Raw",
 ];
+
+/** 操作后缀→中文翻译 */
+const OP_CN: Record<string, string> = {
+  "Metadata Read": "元数据读取",
+  "Metadata Write": "元数据写入",
+  "Run Engine": "运行引擎",
+  "Send": "发送",
+  "Read": "读取",
+  "Write": "写入",
+  "Run": "运行",
+  "Edit": "编辑",
+  "Revoke": "撤销",
+  "Admin": "管理",
+  "Bind": "绑定",
+  "Purge": "清除",
+  "Report": "报告",
+  "Telemetry Write": "遥测写入",
+  "Action": "操作",
+  "Preview": "预览",
+  "Trace": "追踪",
+  "Raw": "原始",
+};
 
 interface ParsedPerm {
   pg: CfTokenPermissionGroup;
-  service: string;
-  op: string;       // 操作名，如 "Read"、"Write"、"Run"、"Report"
+  service: string;   // 英文服务名
+  op: string;         // 英文操作名
   level: "read" | "write" | "other";
 }
 
@@ -97,6 +680,31 @@ function parsePerm(pg: CfTokenPermissionGroup): ParsedPerm {
     op,
     level: permLevel(pg),
   };
+}
+
+/** 获取服务的中文显示名 */
+function serviceCN(service: string): string {
+  // 从映射表中找完整权限名，取去掉操作后缀后的部分作为中文服务名
+  // 用精确匹配的方式不可行（因为映射是全名→全名），改用启发式：
+  // 先找完整权限名映射，去掉操作后缀部分
+  const enName = service;
+  // 尝试从映射表中反向推导：如果某个权限名以该 service 开头，取映射结果的对应部分
+  for (const [enPerm, cnPerm] of Object.entries(PERM_CN)) {
+    if (enPerm.startsWith(enName)) {
+      // 取中文翻译中去掉操作部分的前缀
+      const opSuffix = enPerm.slice(enName.length).trim();
+      const cnOp = OP_CN[opSuffix] ?? opSuffix;
+      if (cnPerm.endsWith(cnOp)) {
+        return cnPerm.slice(0, cnPerm.length - cnOp.length).trim();
+      }
+    }
+  }
+  return enName;
+}
+
+/** 获取操作后缀的中文显示名 */
+function opCN(op: string): string {
+  return OP_CN[op] ?? op;
 }
 
 interface ServiceGroup {
@@ -377,7 +985,7 @@ function permLevelColor(level: "read" | "write" | "other"): string {
   }
 }
 
-/** 获取 Token 的权限信息（含读写级别） */
+/** 获取 Token 的权限信息（含读写级别，显示中文名） */
 function getTokenPerms(token: CfApiToken): Array<{ name: string; level: "read" | "write" | "other" }> {
   const result: Array<{ name: string; level: "read" | "write" | "other" }> = [];
   const seen = new Set<string>();
@@ -387,7 +995,7 @@ function getTokenPerms(token: CfApiToken): Array<{ name: string; level: "read" |
       seen.add(pg.id);
       const found = permissionGroups.value.find((p) => p.id === pg.id);
       if (found) {
-        result.push({ name: found.name, level: permLevel(found) });
+        result.push({ name: permNameCN(found.name), level: permLevel(found) });
       }
     }
   }
@@ -526,11 +1134,11 @@ onMounted(() => {
 
               <!-- 按 scope → service 分组 -->
               <div v-for="[scope, groups] in scopedServiceGroups" :key="scope" class="scope-section">
-                <div class="scope-label">{{ scope }}</div>
+                <div class="scope-label">{{ scopeLabel(scope) }}</div>
 
                 <div v-for="g in groups" :key="g.service" class="service-card" :class="{ 'service-readonly': g.readOnly }">
                   <div class="service-head">
-                    <div class="service-name">{{ g.service }}</div>
+                    <div class="service-name">{{ serviceCN(g.service) }}</div>
                     <div class="service-badges">
                       <span v-if="g.readOnly" class="badge badge-readonly">仅读</span>
                       <span v-if="g.multiOp" class="badge badge-multi">{{ g.opCount }}权限</span>
@@ -556,7 +1164,7 @@ onMounted(() => {
                         :checked="isPermSelected(p.pg.id)"
                         @change="togglePerm(p.pg.id)"
                       />
-                      <span>{{ p.op || p.pg.name }}</span>
+                      <span :title="p.pg.name">{{ p.op ? opCN(p.op) : permNameCN(p.pg.name) }}</span>
                     </label>
                   </div>
                 </div>
