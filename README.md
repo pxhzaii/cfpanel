@@ -19,9 +19,14 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 
 
-## 环境变量
 
-在 Cloudflare Pages 项目 **设置 → 环境变量** 中配置（生产环境建议同时配置到 Production 与 Preview）：
+## 部署步骤
+
+1. Fork 或克隆本仓库到你的 GitHub
+2. 在 Cloudflare Dashboard 创建 Pages 项目，`注意是pages不是works`，连接该 GitHub 仓库
+3. 构建命令：`npm run build`
+4. 输出目录：`dist`
+5. 配置环境变量
 
 | 变量名 | 必填 | 说明 |
 | --- | --- | --- |
@@ -47,12 +52,23 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 > 注意：双引号必须是英文双引号 `"`，不能是中文引号。
 
+
+
+
+
+
+
+
 ## API Token 权限
 
 在 [API Tokens 页面](https://dash.cloudflare.com/profile/api-tokens) 创建 Token，推荐按需勾选（至少勾选你要用到的功能）：
 
 选择模板 **`编辑 Cloudflare Workers`**，按图增加所需权限
 ![权限](./3.jpg)
+
+
+
+
 
 ## 重新部署说明
 
@@ -66,12 +82,3 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 如果项目未连接 GitHub 仓库，将回退到 ad_hoc 部署方式，同样在部署完成后自动恢复环境变量配置。
 
-## 部署步骤
-
-1. Fork 或克隆本仓库到你的 GitHub
-2. 在 Cloudflare Dashboard 创建 Pages 项目，连接该 GitHub 仓库
-3. 构建命令：`npm run build`，输出目录：`dist`
-4. 配置环境变量（见上表）
-5. 部署完成即可访问
-
-> AI生成
