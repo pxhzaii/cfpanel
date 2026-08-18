@@ -631,18 +631,29 @@ export async function getPagesProject(projectName: string): Promise<CfPagesProje
 /**
  * 手动触发 Pages 项目重新部署。
  *
- * 通过服务端 /api/redeploy 函数，用 GitHub API 推送一个空 commit 到
+ * 通过服务端 /api/redeploy 函数，用 GitHub API 推送一个 commit 到
  * 项目的 GitHub 仓库 main 分支，触发 CF Pages 的 GitHub webhook 自动部署。
- * 这种部署方式会正确继承所有环境变量和绑定。
  *
- * 如果项目未连接 GitHub 仓库，则回退到 ad_hoc 部署（带环境变量恢复逻辑）。
+ * CF Pages 部署后会用部署记录中的 env_vars 覆盖项目级配置，
+ * 导致通过 API 设置的 plain_text 变量可能丢失。
+ * 因此在触发部署前先保存快照，部署完成后客户端侧恢复。
+ *
+ * 如果项目未连接 GitHub 仓库，则回退到 ad_hoc 部署（同样带恢复逻辑）。
  */
 export async function createPagesDeployment(projectName: string): Promise<{ message: string; commit_sha?: string }> {
   const pass = auth.pass;
   const panelUser = auth.panelUser;
   if (!pass || !panelUser) throw new ApiError(401, "未登录");
 
-  // 尝试通过 GitHub 推空 commit 触发部署
+  // 0. 部署前保存项目级配置快照（用于部署后恢复）
+  const proj = await getPagesProject(projectName);
+  const savedEnvVars = (proj.deployment_configs?.production?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
+  const savedKv = proj.deployment_configs?.production?.kv_namespaces ?? {};
+  const savedR2 = proj.deployment_configs?.production?.r2_buckets ?? {};
+  const savedD1 = proj.deployment_configs?.production?.d1_databases ?? {};
+
+  // 尝试通过 GitHub 推 commit 触发部署
+  let commitSha: string | undefined;
   try {
     const res = await fetch("/api/redeploy", {
       method: "POST",
@@ -666,48 +677,29 @@ export async function createPagesDeployment(projectName: string): Promise<{ mess
     if (!res.ok || !data.success) {
       // 如果错误信息表明项目未连接 GitHub，则回退到 ad_hoc 部署
       if (data.error?.includes("未连接 GitHub 仓库")) {
-        return createPagesDeploymentAdHoc(projectName);
+        const result = await createPagesDeploymentAdHoc(projectName, savedEnvVars, savedKv, savedR2, savedD1);
+        return result;
       }
       throw new ApiError(res.status, data.error ?? `请求失败（HTTP ${res.status}）`);
     }
-    return { message: data.message ?? "已触发重新部署", commit_sha: data.commit_sha };
+    commitSha = data.commit_sha;
   } catch (e) {
     // 网络错误等情况，尝试 ad_hoc 回退
     if (e instanceof ApiError && e.message.includes("未连接 GitHub 仓库")) {
-      return createPagesDeploymentAdHoc(projectName);
+      return createPagesDeploymentAdHoc(projectName, savedEnvVars, savedKv, savedR2, savedD1);
     }
     throw e;
   }
-}
 
-/**
- * ad_hoc 部署回退方案（带环境变量恢复逻辑）。
- * 仅在 GitHub 推 commit 方式不可用时使用。
- */
-async function createPagesDeploymentAdHoc(projectName: string): Promise<{ message: string }> {
-  // 1. 部署前保存项目级配置快照
-  const proj = await getPagesProject(projectName);
-  const savedEnvVars = (proj.deployment_configs?.production?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
-  const savedKv = proj.deployment_configs?.production?.kv_namespaces ?? {};
-  const savedR2 = proj.deployment_configs?.production?.r2_buckets ?? {};
-  const savedD1 = proj.deployment_configs?.production?.d1_databases ?? {};
-
-  // 2. 触发 ad_hoc 部署
-  const res = await fetch(`/api/proxy/${accountPrefix()}/pages/projects/${projectName}/deployments`, {
-    method: "POST",
-    headers: { "X-Panel-User": auth.panelUser, "X-Panel-Pass": auth.pass! },
-  });
-  const deployment = await handle<CfPagesDeployment>(res);
-  const deployId = deployment.id;
-
-  // 3. 轮询部署状态（后台异步，不阻塞前端）
+  // 后台轮询部署状态，完成后恢复 env_vars/bindings
   void (async () => {
-    const maxAttempts = 60;
+    const maxAttempts = 60; // 最多等 5 分钟
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       try {
-        const d = await proxy<CfPagesDeployment>("GET", `${accountPrefix()}/pages/projects/${projectName}/deployments/${deployId}`);
-        const stage = d.latest_stage;
+        const deployments = await proxy<CfPagesDeployment[]>("GET", `${accountPrefix()}/pages/projects/${projectName}/deployments`, undefined, { per_page: 1 });
+        const latest = deployments[0];
+        const stage = latest?.latest_stage;
         if (stage?.status === "success" || stage?.status === "failure" || stage?.status === "canceled") {
           break;
         }
@@ -716,7 +708,7 @@ async function createPagesDeploymentAdHoc(projectName: string): Promise<{ messag
       }
     }
 
-    // 4. 部署完成后恢复 env_vars 和 bindings
+    // 部署完成后恢复 env_vars 和 bindings
     try {
       const restoreBody: Record<string, unknown> = {
         deployment_configs: { production: {} as Record<string, unknown> },
@@ -732,6 +724,82 @@ async function createPagesDeploymentAdHoc(projectName: string): Promise<{ messag
         prod.r2_buckets = savedR2;
       }
       if (Object.keys(savedD1).length > 0) {
+        prod.d1_databases = savedD1;
+      }
+      if (Object.keys(prod).length > 0) {
+        await proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, restoreBody);
+      }
+    } catch {
+      // 恢复失败不影响部署本身
+    }
+  })();
+
+  return {
+    message: `已推送 commit，CF Pages 将自动部署，部署完成后自动恢复环境变量。`,
+    commit_sha: commitSha,
+  };
+}
+
+/**
+ * ad_hoc 部署回退方案（带环境变量恢复逻辑）。
+ * 仅在 GitHub 推 commit 方式不可用时使用。
+ */
+async function createPagesDeploymentAdHoc(
+  projectName: string,
+  savedEnvVars?: Record<string, CfPagesEnvVar>,
+  savedKv?: Record<string, unknown>,
+  savedR2?: Record<string, unknown>,
+  savedD1?: Record<string, unknown>,
+): Promise<{ message: string }> {
+  // 如果没有传入快照，则重新获取
+  if (!savedEnvVars) {
+    const proj = await getPagesProject(projectName);
+    savedEnvVars = (proj.deployment_configs?.production?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
+    savedKv = proj.deployment_configs?.production?.kv_namespaces ?? {};
+    savedR2 = proj.deployment_configs?.production?.r2_buckets ?? {};
+    savedD1 = proj.deployment_configs?.production?.d1_databases ?? {};
+  }
+
+  // 触发 ad_hoc 部署
+  const res = await fetch(`/api/proxy/${accountPrefix()}/pages/projects/${projectName}/deployments`, {
+    method: "POST",
+    headers: { "X-Panel-User": auth.panelUser, "X-Panel-Pass": auth.pass! },
+  });
+  const deployment = await handle<CfPagesDeployment>(res);
+  const deployId = deployment.id;
+
+  // 后台轮询部署状态，完成后恢复
+  void (async () => {
+    const maxAttempts = 60;
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const d = await proxy<CfPagesDeployment>("GET", `${accountPrefix()}/pages/projects/${projectName}/deployments/${deployId}`);
+        const stage = d.latest_stage;
+        if (stage?.status === "success" || stage?.status === "failure" || stage?.status === "canceled") {
+          break;
+        }
+      } catch {
+        // 查询失败继续重试
+      }
+    }
+
+    // 部署完成后恢复 env_vars 和 bindings
+    try {
+      const restoreBody: Record<string, unknown> = {
+        deployment_configs: { production: {} as Record<string, unknown> },
+      };
+      const prod = (restoreBody.deployment_configs as { production: Record<string, unknown> }).production;
+      if (savedEnvVars && Object.keys(savedEnvVars).length > 0) {
+        prod.env_vars = savedEnvVars;
+      }
+      if (savedKv && Object.keys(savedKv).length > 0) {
+        prod.kv_namespaces = savedKv;
+      }
+      if (savedR2 && Object.keys(savedR2).length > 0) {
+        prod.r2_buckets = savedR2;
+      }
+      if (savedD1 && Object.keys(savedD1).length > 0) {
         prod.d1_databases = savedD1;
       }
       if (Object.keys(prod).length > 0) {
