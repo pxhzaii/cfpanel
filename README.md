@@ -83,3 +83,13 @@ cfpanel面板的"重新部署"功能通过 **GitHub API 推送 commit** 来触�
 
 GH_TOKEN获取 需要repo权限 手获取地址机编辑的，最近会更
 
+
+
+
+1. 打开 [github](https://github.com/settings/tokens)
+2. 点击 **Generate new token (classic)**
+3. 填写以下信息：
+   - **Note**（备注）：随便写
+   - **Expiration**（有效期）：按需选择
+   - **Scopes**（权限）：**只勾选 `repo`**，其他都不勾
+> [创建 Token（预设 repo 权限）](https://github.com/settings/tokens/new?description=NavSync%20Cloud%20Sync&scopes=repo)
