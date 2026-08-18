@@ -629,23 +629,62 @@ export async function getPagesProject(projectName: string): Promise<CfPagesProje
 }
 
 /**
- * 手动触发 Pages 项目部署（从 GitHub 源拉取并构建）。
+ * 手动触发 Pages 项目重新部署。
  *
- * 已知问题（CF API 行为）：
- *   ad_hoc 部署不接收 multipart 中的 env_vars part，
- *   部署完成后会用空 env_vars 覆盖项目级配置，导致环境变量全部丢失。
+ * 通过服务端 /api/redeploy 函数，用 GitHub API 推送一个空 commit 到
+ * 项目的 GitHub 仓库 main 分支，触发 CF Pages 的 GitHub webhook 自动部署。
+ * 这种部署方式会正确继承所有环境变量和绑定。
  *
- * 修复方案：
- *   1. 部署前保存项目级 env_vars + bindings 快照
- *   2. 触发 ad_hoc 部署
- *   3. 轮询部署状态直到完成（最多等 5 分钟）
- *   4. 部署完成后立即 PATCH 恢复 env_vars 和 bindings
+ * 如果项目未连接 GitHub 仓库，则回退到 ad_hoc 部署（带环境变量恢复逻辑）。
  */
-export async function createPagesDeployment(projectName: string): Promise<CfPagesDeployment> {
+export async function createPagesDeployment(projectName: string): Promise<{ message: string; commit_sha?: string }> {
   const pass = auth.pass;
   const panelUser = auth.panelUser;
   if (!pass || !panelUser) throw new ApiError(401, "未登录");
 
+  // 尝试通过 GitHub 推空 commit 触发部署
+  try {
+    const res = await fetch("/api/redeploy", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Panel-User": panelUser,
+        "X-Panel-Pass": pass,
+      },
+      body: JSON.stringify({
+        projectName,
+        accountId: auth.accountId,
+      }),
+    });
+    const text = await res.text();
+    let data: { success: boolean; error?: string; message?: string; commit_sha?: string };
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new ApiError(res.status, `响应解析失败（HTTP ${res.status}）`);
+    }
+    if (!res.ok || !data.success) {
+      // 如果错误信息表明项目未连接 GitHub，则回退到 ad_hoc 部署
+      if (data.error?.includes("未连接 GitHub 仓库")) {
+        return createPagesDeploymentAdHoc(projectName);
+      }
+      throw new ApiError(res.status, data.error ?? `请求失败（HTTP ${res.status}）`);
+    }
+    return { message: data.message ?? "已触发重新部署", commit_sha: data.commit_sha };
+  } catch (e) {
+    // 网络错误等情况，尝试 ad_hoc 回退
+    if (e instanceof ApiError && e.message.includes("未连接 GitHub 仓库")) {
+      return createPagesDeploymentAdHoc(projectName);
+    }
+    throw e;
+  }
+}
+
+/**
+ * ad_hoc 部署回退方案（带环境变量恢复逻辑）。
+ * 仅在 GitHub 推 commit 方式不可用时使用。
+ */
+async function createPagesDeploymentAdHoc(projectName: string): Promise<{ message: string }> {
   // 1. 部署前保存项目级配置快照
   const proj = await getPagesProject(projectName);
   const savedEnvVars = (proj.deployment_configs?.production?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
@@ -656,15 +695,14 @@ export async function createPagesDeployment(projectName: string): Promise<CfPage
   // 2. 触发 ad_hoc 部署
   const res = await fetch(`/api/proxy/${accountPrefix()}/pages/projects/${projectName}/deployments`, {
     method: "POST",
-    headers: { "X-Panel-User": panelUser, "X-Panel-Pass": pass },
+    headers: { "X-Panel-User": auth.panelUser, "X-Panel-Pass": auth.pass! },
   });
   const deployment = await handle<CfPagesDeployment>(res);
   const deployId = deployment.id;
 
   // 3. 轮询部署状态（后台异步，不阻塞前端）
-  //    部署完成后恢复配置——用 void 启动后台 Promise
   void (async () => {
-    const maxAttempts = 60; // 最多等 5 分钟（每 5 秒查一次）
+    const maxAttempts = 60;
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       try {
@@ -704,7 +742,7 @@ export async function createPagesDeployment(projectName: string): Promise<CfPage
     }
   })();
 
-  return deployment;
+  return { message: "已触发 ad_hoc 部署，部署完成后将自动恢复环境变量配置" };
 }
 
 /**

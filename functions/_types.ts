@@ -8,6 +8,8 @@ export interface Environment {
   PANEL_USERS?: string;
   /** Cloudflare API Token（必填，权限按 README 说明创建） */
   CF_API_TOKEN?: string;
+  /** GitHub Token（用于推空 commit 触发 Pages 重新部署，需 repo 权限） */
+  GH_TOKEN?: string;
 }
 
 /** 路由参数：/api/proxy/xxx 中的 xxx 部分 */

@@ -378,7 +378,9 @@ async function triggerDeploy() {
   error.value = "";
   deploying.value = true;
   try {
-    await createPagesDeployment(activeProject.value.name);
+    const result = await createPagesDeployment(activeProject.value.name);
+    // 显示部署触发结果消息
+    error.value = result.message;
     // 等待几秒后刷新部署列表
     await new Promise((r) => setTimeout(r, 3000));
     pagesDeployments.value = await listPagesDeployments(activeProject.value.name);
