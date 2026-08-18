@@ -113,60 +113,57 @@ export const onRequest: ApiFunction = async ({ request, env }: { request: Reques
     "Authorization": `token ${env.GH_TOKEN}`,
     "Accept": "application/vnd.github+json",
     "Content-Type": "application/json",
+    "User-Agent": "cfpanel-redeploy",
   };
 
   try {
-    // 6. 获取 main 分支最新 commit SHA
-    const refResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
-      headers: ghHeaders,
-    });
-    if (!refResp.ok) {
-      const errBody = await refResp.text();
-      return json({ success: false, error: `获取 ${branch} 分支 ref 失败：${errBody.slice(0, 200)}` }, refResp.status);
-    }
-    const refData = await refResp.json() as { object: { sha: string } };
-    const headSha = refData.object.sha;
+    // 6. 用 Contents API 推送/更新一个 .redeploy-trigger 文件触发 GitHub webhook
+    const triggerPath = ".redeploy-trigger";
+    const content = btoa(`redeploy ${Date.now()}`);
 
-    // 7. 创建新 tree（基于 HEAD tree，无改动 → 空 commit）
-    const treeResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
-      method: "POST",
-      headers: ghHeaders,
-      body: JSON.stringify({ base_tree: headSha, tree: [] }),
-    });
-    if (!treeResp.ok) {
-      return json({ success: false, error: "创建 tree 失败。" }, treeResp.status);
-    }
-    const treeData = await treeResp.json() as { sha: string };
-
-    // 8. 创建 commit
-    const commitResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits`, {
-      method: "POST",
+    // 先尝试直接创建文件（PUT /contents/{path}）
+    let createResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${triggerPath}`, {
+      method: "PUT",
       headers: ghHeaders,
       body: JSON.stringify({
-        message: `chore: trigger redeploy via cfpanel [skip ci]`,
-        tree: treeData.sha,
-        parents: [headSha],
+        message: `chore: trigger redeploy via cfpanel`,
+        content,
       }),
     });
-    if (!commitResp.ok) {
-      return json({ success: false, error: "创建 commit 失败。" }, commitResp.status);
-    }
-    const commitData = await commitResp.json() as { sha: string };
 
-    // 9. 更新 ref 指向新 commit
-    const updateResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
-      method: "PATCH",
-      headers: ghHeaders,
-      body: JSON.stringify({ sha: commitData.sha, force: false }),
-    });
-    if (!updateResp.ok) {
-      return json({ success: false, error: "更新分支 ref 失败。" }, updateResp.status);
+    // 如果文件已存在（409 / 422），需要先获取文件 sha 再更新
+    if (!createResp.ok && (createResp.status === 409 || createResp.status === 422)) {
+      const getResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${triggerPath}`, {
+        headers: ghHeaders,
+      });
+      if (!getResp.ok) {
+        const errBody = await getResp.text();
+        return json({ success: false, error: `获取触发文件信息失败：${errBody.slice(0, 200)}` }, getResp.status);
+      }
+      const fileData = await getResp.json() as { sha: string };
+      createResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${triggerPath}`, {
+        method: "PUT",
+        headers: ghHeaders,
+        body: JSON.stringify({
+          message: `chore: trigger redeploy via cfpanel`,
+          content,
+          sha: fileData.sha,
+        }),
+      });
     }
+
+    if (!createResp.ok) {
+      const errBody = await createResp.text();
+      return json({ success: false, error: `推送触发文件失败：${errBody.slice(0, 200)}` }, createResp.status);
+    }
+
+    const result = await createResp.json() as { commit: { sha: string } };
+    const commitSha = result.commit.sha;
 
     return json({
       success: true,
-      commit_sha: commitData.sha,
-      message: `已推送空 commit 到 ${owner}/${repo}@${branch}，等待 CF Pages webhook 自动部署。`,
+      commit_sha: commitSha,
+      message: `已推送 commit 到 ${owner}/${repo}@${branch}，等待 CF Pages webhook 自动部署。`,
     });
   } catch (e) {
     return json({ success: false, error: `GitHub API 请求失败：${(e as Error).message}` }, 502);
