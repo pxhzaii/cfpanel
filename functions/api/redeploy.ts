@@ -13,7 +13,7 @@
  *
  * 需要在 Pages 环境变量中配置 GH_TOKEN（GitHub Token，需 repo 权限）。
  */
-import type { ApiFunction } from "../_types";
+import type { ApiFunction, ApiContext } from "../_types";
 
 interface Env extends Environment {
   GH_TOKEN?: string;
@@ -151,12 +151,7 @@ async function pollAndRestore(
   }
 }
 
-export const onRequest: ApiFunction = async ({ request, env, ctx }: {
-  request: Request;
-  env: Env;
-  params: Record<string, unknown>;
-  ctx: { waitUntil: (p: Promise<unknown>) => void };
-}) => {
+export const onRequest: ApiFunction = async ({ request, env, ctx }: ApiContext) => {
   // 1. 鉴权
   if (!env.CF_API_TOKEN) {
     return json({ success: false, error: "服务端未配置 CF_API_TOKEN。" }, 500);
@@ -281,12 +276,15 @@ export const onRequest: ApiFunction = async ({ request, env, ctx }: {
     const commitSha = result.commit.sha;
 
     // 9. 后台轮询部署状态 + 部署完成后恢复 env_vars/bindings
-    ctx.waitUntil(
-      pollAndRestore(
-        cfHeaders, accountId, projectName, owner, repo, branch, ghHeaders,
-        savedEnvVars, savedKv, savedR2, savedD1,
-      ),
+    const restorePromise = pollAndRestore(
+      cfHeaders, accountId, projectName, owner, repo, branch, ghHeaders,
+      savedEnvVars, savedKv, savedR2, savedD1,
     );
+    if (ctx?.waitUntil) {
+      ctx.waitUntil(restorePromise);
+    } else {
+      void restorePromise;
+    }
 
     return json({
       success: true,

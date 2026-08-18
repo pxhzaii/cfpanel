@@ -21,6 +21,10 @@ export interface ApiContext {
   request: Request;
   env: Environment;
   params: ProxyParams;
+  /** Cloudflare Pages Functions 上下文，提供 waitUntil 等 */
+  ctx?: {
+    waitUntil: (promise: Promise<unknown>) => void;
+  };
 }
 
 export type ApiFunction = (context: ApiContext) => Promise<Response> | Response;
