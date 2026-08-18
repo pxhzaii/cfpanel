@@ -1083,7 +1083,7 @@ onMounted(() => {
     </div>
 
     <!-- 创建 KV 命名空间弹层 -->
-    <div v-if="showCreateKv" class="mask" @click.self="showCreateKv = false">
+    <div v-if="showCreateKv" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>新建 KV 命名空间</h3>
@@ -1102,7 +1102,7 @@ onMounted(() => {
     </div>
 
     <!-- 创建 R2 存储桶弹层 -->
-    <div v-if="showCreateR2" class="mask" @click.self="showCreateR2 = false">
+    <div v-if="showCreateR2" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>新建 R2 存储桶</h3>
@@ -1132,7 +1132,7 @@ onMounted(() => {
     </div>
 
     <!-- 创建 D1 数据库弹层 -->
-    <div v-if="showCreateD1" class="mask" @click.self="showCreateD1 = false">
+    <div v-if="showCreateD1" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>新建 D1 数据库</h3>
@@ -1151,7 +1151,7 @@ onMounted(() => {
     </div>
 
     <!-- R2 上传文件弹层 -->
-    <div v-if="showUploadR2" class="mask" @click.self="showUploadR2 = false">
+    <div v-if="showUploadR2" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>上传文件</h3>
@@ -1193,7 +1193,7 @@ onMounted(() => {
     </div>
 
     <!-- R2 CORS 编辑弹层 -->
-    <div v-if="showCorsEditor" class="mask" @click.self="showCorsEditor = false">
+    <div v-if="showCorsEditor" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>CORS 策略</h3>
@@ -1224,7 +1224,7 @@ onMounted(() => {
     </div>
 
     <!-- R2 添加自定义域弹层 -->
-    <div v-if="showAddDomain" class="mask" @click.self="showAddDomain = false">
+    <div v-if="showAddDomain" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>添加自定义域</h3>
