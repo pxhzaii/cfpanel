@@ -337,3 +337,62 @@ export interface DnsRecordForm {
   comment?: string;
   priority?: number;
 }
+
+// ---------------- API Token ----------------
+
+/** 权限组（Token 可关联的最小权限单元） */
+export interface CfTokenPermissionGroup {
+  id: string;
+  name: string;
+  scopes: string[];
+}
+
+/** Token 策略中的资源组引用 */
+export interface CfTokenPolicyResourceGroup {
+  id: string;
+}
+
+/** Token 策略（定义 Token 的权限范围与作用资源） */
+export interface CfTokenPolicy {
+  id?: string;
+  effect: "allow" | "deny";
+  resources: Record<string, string>;
+  permission_groups: CfTokenPolicyResourceGroup[];
+  resource_group?: CfTokenPolicyResourceGroup;
+}
+
+/** API Token（列表/详情） */
+export interface CfApiToken {
+  id: string;
+  name: string;
+  status: "active" | "deleted" | "expiring" | "expired";
+  policies: CfTokenPolicy[];
+  condition?: {
+    ip?: { in?: string[]; not_in?: string[] };
+  };
+  issued_on?: string;
+  modified_on?: string;
+  created_on?: string;
+  last_used_on?: string | null;
+  expires_on?: string | null;
+  eligible?:
+    | string
+    | {
+        expires_on?: string | null;
+      };
+}
+
+/** 创建 Token 的请求体 */
+export interface CreateApiTokenParams {
+  name: string;
+  policies: CfTokenPolicy[];
+  condition?: {
+    ip?: { in?: string[]; not_in?: string[] };
+  };
+  expires_on?: string | null;
+}
+
+/** Token 轮换后的响应（包含明文 value） */
+export interface CfApiTokenValue {
+  value: string;
+}

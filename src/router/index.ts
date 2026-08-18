@@ -8,6 +8,7 @@ import Dns from "../views/Dns.vue";
 import Workers from "../views/Workers.vue";
 import Storage from "../views/Storage.vue";
 import Settings from "../views/Settings.vue";
+import Tokens from "../views/Tokens.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -25,6 +26,7 @@ const router = createRouter({
             { path: "dns", name: "dns", component: Dns },
             { path: "workers", name: "workers", component: Workers },
             { path: "storage", name: "storage", component: Storage },
+            { path: "tokens", name: "tokens", component: Tokens },
             { path: "settings", name: "settings", component: Settings },
           ],
         },

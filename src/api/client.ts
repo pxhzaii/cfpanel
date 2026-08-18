@@ -32,6 +32,10 @@ import type {
   CfAccount,
   PageParams,
   DnsRecordForm,
+  CfApiToken,
+  CfApiTokenValue,
+  CfTokenPermissionGroup,
+  CreateApiTokenParams,
 } from "./types";
 
 const PASS_KEY = "cfpanel_pass";
@@ -998,4 +1002,30 @@ export async function updateWorkerBindings(scriptName: string, bindings: CfWorke
 
 export async function listAccounts(): Promise<CfAccount[]> {
   return proxy<CfAccount[]>("GET", "accounts");
+}
+
+// ---------------- API Token ----------------
+
+export async function listApiTokens(): Promise<CfApiToken[]> {
+  return proxy<CfApiToken[]>("GET", `${accountPrefix()}/tokens`);
+}
+
+export async function createApiToken(params: CreateApiTokenParams): Promise<CfApiToken & { value?: string }> {
+  return proxy<CfApiToken & { value?: string }>("POST", `${accountPrefix()}/tokens`, params);
+}
+
+export async function deleteApiToken(tokenId: string): Promise<unknown> {
+  return proxy("DELETE", `${accountPrefix()}/tokens/${tokenId}`);
+}
+
+export async function rotateApiTokenValue(tokenId: string): Promise<CfApiTokenValue> {
+  return proxy<CfApiTokenValue>("PUT", `${accountPrefix()}/tokens/${tokenId}/value`);
+}
+
+export async function verifyApiToken(): Promise<{ id: string; status: string }[]> {
+  return proxy<{ id: string; status: string }[]>("GET", `${accountPrefix()}/tokens/verify`);
+}
+
+export async function listTokenPermissionGroups(): Promise<CfTokenPermissionGroup[]> {
+  return proxy<CfTokenPermissionGroup[]>("GET", `${accountPrefix()}/tokens/permission_groups`);
 }

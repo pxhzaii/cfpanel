@@ -9,6 +9,7 @@ import {
   listKvNamespaces,
   listR2Buckets,
   listD1Databases,
+  listApiTokens,
 } from "../api/client";
 
 const router = useRouter();
@@ -19,6 +20,7 @@ const pages = ref(0);
 const kv = ref(0);
 const r2 = ref(0);
 const d1 = ref(0);
+const tokenCount = ref(0);
 const loading = ref(true);
 const error = ref("");
 
@@ -44,14 +46,16 @@ async function load() {
       listKvNamespaces(),
       listR2Buckets(),
       listD1Databases(),
+      listApiTokens(),
     ]);
-    const [z, w, p, k, r, d] = results;
+    const [z, w, p, k, r, d, tk] = results;
     zones.value = z.status === "fulfilled" ? z.value.length : 0;
     workers.value = w.status === "fulfilled" ? w.value.length : 0;
     pages.value = p.status === "fulfilled" ? p.value.length : 0;
     kv.value = k.status === "fulfilled" ? k.value.length : 0;
     r2.value = r.status === "fulfilled" ? r.value.length : 0;
     d1.value = d.status === "fulfilled" ? d.value.length : 0;
+    tokenCount.value = tk.status === "fulfilled" ? tk.value.length : 0;
     const failed = results.filter((r) => r.status === "rejected");
     if (failed.length > 0) {
       const first = failed[0] as PromiseRejectedResult;
@@ -99,6 +103,7 @@ onMounted(load);
         <li>DNS：增删改查记录、切换橙云代理（仅对支持代理的记录类型生效）</li>
         <li>Workers：查看/新建/删除脚本、查看代码、管理机密与绑定；Pages 项目部署、环境变量、绑定与设置</li>
         <li>存储：KV 命名空间增删与键值读写、R2 存储桶增删/文件浏览/上传下载/CORS/自定义域、D1 数据库增删与 SQL 查询</li>
+        <li>令牌：查看/新建/删除 API Token、轮换 Token 值、按权限组精细控制</li>
       </ul>
     </section>
   </div>
