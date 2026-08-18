@@ -907,7 +907,7 @@ onMounted(() => {
     </div>
 
     <!-- 新建 Worker 弹层 -->
-    <div v-if="showCreateWorker" class="mask" @click.self="showCreateWorker = false">
+    <div v-if="showCreateWorker" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>新建 Worker</h3>
@@ -980,7 +980,7 @@ onMounted(() => {
     </div>
 
     <!-- 添加 Worker 机密弹层 -->
-    <div v-if="showAddSecret" class="mask" @click.self="showAddSecret = false">
+    <div v-if="showAddSecret" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>添加机密变量</h3>
@@ -1003,7 +1003,7 @@ onMounted(() => {
     </div>
 
     <!-- 添加 Worker 绑定弹层 -->
-    <div v-if="showAddBinding" class="mask" @click.self="showAddBinding = false">
+    <div v-if="showAddBinding" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>添加绑定</h3>
@@ -1056,7 +1056,7 @@ onMounted(() => {
     </div>
 
     <!-- 添加 Pages 绑定弹层 -->
-    <div v-if="showAddPagesBinding" class="mask" @click.self="showAddPagesBinding = false">
+    <div v-if="showAddPagesBinding" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>添加绑定</h3>
@@ -1104,7 +1104,7 @@ onMounted(() => {
     </div>
 
     <!-- 添加环境变量弹层 -->
-    <div v-if="showAddEnv" class="mask" @click.self="showAddEnv = false">
+    <div v-if="showAddEnv" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>添加环境变量</h3>
@@ -1134,7 +1134,7 @@ onMounted(() => {
     </div>
 
     <!-- 创建 Pages 项目弹层 -->
-    <div v-if="showCreateProject" class="mask" @click.self="showCreateProject = false">
+    <div v-if="showCreateProject" class="mask">
       <div class="sheet">
         <div class="sheet-head">
           <h3>新建 Pages 项目</h3>
