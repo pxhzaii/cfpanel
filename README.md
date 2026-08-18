@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '8e62626a-631a-4d80-8462-195c9bb5c300'
-  PropagateID: '8e62626a-631a-4d80-8462-195c9bb5c300'
-  ReservedCode1:  'e060d204-71e2-419a-9bea-e22dec38014a'
-  ReservedCode2: 'e060d204-71e2-419a-9bea-e22dec38014a'
+  ProduceID: 'b5002972-1804-44a9-b37f-6557d623814c'
+  PropagateID: 'b5002972-1804-44a9-b37f-6557d623814c'
+  ReservedCode1: '7f7bdf4b-f023-4881-91cc-5378ba7efd93'
+  ReservedCode2: '7f7bdf4b-f023-4881-91cc-5378ba7efd93'
 ---
 
 # CF Panel
@@ -18,6 +18,7 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 - **DNS**：域名列表、DNS 记录增删改查、一键切换橙云代理
 - **Workers/Pages**：项目列表、新建/删除项目、支持 GitHub 仓库连接、环境变量管理、机密变量管理、绑定管理（KV/R2/D1）、重新部署
 - **存储**：KV 命名空间与键值管理、R2 存储桶列表与文件浏览/上传/下载/删除、R2 自定义域名管理、D1 数据库 SQL 执行与表浏览
+- **API 令牌**：查看/创建/删除/轮换 CF API Token，396 项权限按服务分组展示并全面中文化，支持分类快捷筛选（DNS/Workers/数据库/自定义），权限组标注只读/读写级别，混合 scope 权限自动拆分为多个策略
 
 ![主页面](1.jpg)
 ![dns管理](2.jpg)
