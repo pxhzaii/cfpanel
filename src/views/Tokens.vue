@@ -26,8 +26,33 @@ const creating = ref(false);
 const createdTokenValue = ref<string | null>(null);
 const copiedToClipboard = ref(false);
 
-// 权限搜索
-const permSearch = ref("");
+// 权限过滤分类
+type PermFilter = "" | "dns" | "workers" | "database" | "custom";
+const permFilter = ref<PermFilter>("");
+
+// 各分类的关键词匹配规则
+const FILTER_KEYWORDS: Record<Exclude<PermFilter, "">, string[]> = {
+  dns: ["dns"],
+  workers: ["worker", "pages", "script", "kv", "r2", "storage"],
+  database: ["d1", "database", "sql"],
+  custom: [], // 全部
+};
+
+function setPermFilter(f: PermFilter) {
+  if (permFilter.value === f) {
+    // 再次点击同一个则取消
+    permFilter.value = "";
+  } else {
+    permFilter.value = f;
+  }
+}
+
+function matchesFilter(pg: CfTokenPermissionGroup, f: PermFilter): boolean {
+  if (!f || f === "custom") return true;
+  const name = pg.name.toLowerCase();
+  const keywords = FILTER_KEYWORDS[f] ?? [];
+  return keywords.some((kw) => name.includes(kw));
+}
 
 // 删除确认
 const confirmDeleteId = ref<string | null>(null);
@@ -85,14 +110,11 @@ interface ServiceGroup {
   multiOp: boolean;   // 3+ 个操作
 }
 
-/** 按服务分组，支持搜索过滤 */
+/** 按服务分组，支持分类过滤 */
 const serviceGroups = computed<ServiceGroup[]>(() => {
-  const search = permSearch.value.trim().toLowerCase();
+  const filter = permFilter.value;
   const parsed = permissionGroups.value
-    .filter((pg) => {
-      if (!search) return true;
-      return pg.name.toLowerCase().includes(search);
-    })
+    .filter((pg) => matchesFilter(pg, filter))
     .map(parsePerm);
 
   const map = new Map<string, ServiceGroup>();
@@ -209,7 +231,7 @@ function selectServiceByLevel(g: ServiceGroup, level: "read" | "write") {
 
 function clearSelection() {
   selectedPermIds.value = [];
-  permSearch.value = "";
+  permFilter.value = "";
 }
 
 // ---- 数据加载 ----
@@ -318,7 +340,7 @@ function closeCreateModal() {
   newName.value = "";
   selectedPermIds.value = [];
   expiresInDays.value = 0;
-  permSearch.value = "";
+  permFilter.value = "";
   error.value = "";
 }
 
@@ -476,13 +498,13 @@ onMounted(() => {
           <div class="field">
             <label>权限组（{{ selectedPermIds.length }} 个已选）</label>
 
-            <!-- 搜索框 -->
-            <input
-              v-model="permSearch"
-              type="text"
-              class="perm-search"
-              placeholder="搜索权限名称…"
-            />
+            <!-- 分类按钮 -->
+            <div class="filter-tabs">
+              <button class="filter-tab" :class="{ active: permFilter === 'dns' }" @click="setPermFilter('dns')">编辑区域 DNS</button>
+              <button class="filter-tab" :class="{ active: permFilter === 'workers' }" @click="setPermFilter('workers')">编辑 Cloudflare Workers</button>
+              <button class="filter-tab" :class="{ active: permFilter === 'database' }" @click="setPermFilter('database')">编辑数据库</button>
+              <button class="filter-tab" :class="{ active: permFilter === 'custom' }" @click="setPermFilter('custom')">自定义令牌</button>
+            </div>
 
             <div v-if="permissionGroups.length === 0" class="perm-loading">正在加载权限组…</div>
             <div v-else class="perm-groups">
@@ -541,7 +563,7 @@ onMounted(() => {
               </div>
 
               <div v-if="serviceGroups.length === 0" class="perm-loading">
-                未找到匹配的权限组
+                该分类下无权限组，点击其他分类查看
               </div>
             </div>
           </div>
@@ -812,13 +834,30 @@ onMounted(() => {
 }
 
 /* 权限选择区域 */
-.perm-search {
-  padding: 8px 12px !important;
-  border-radius: 10px !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  background: rgba(255, 255, 255, 0.04) !important;
-  color: #e8edf5 !important;
-  font-size: 13px !important;
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.filter-tab {
+  padding: 6px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #aab3c5;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.filter-tab:hover {
+  border-color: rgba(246, 154, 34, 0.3);
+  color: #e8edf5;
+}
+.filter-tab.active {
+  border-color: rgba(246, 154, 34, 0.5);
+  background: rgba(246, 154, 34, 0.15);
+  color: #f69a22;
+  font-weight: 600;
 }
 .perm-groups {
   display: flex;
