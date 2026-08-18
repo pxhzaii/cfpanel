@@ -588,11 +588,15 @@ export async function getPagesEnvVars(projectName: string, env: "production" | "
  * 添加/更新 Pages 环境变量。
  * 注意：PATCH /environments/{env}/vars/{name} 端点会返回 200 但实际上不生效（CF API 的坑），
  * 必须改为 PATCH 整个项目，通过 deployment_configs.{env}.env_vars 提交。
+ *
+ * 重要：CF Pages 部署时会用部署记录中的 env_vars 快照覆盖项目级配置。
+ * 实测发现 plain_text 类型变量在部署后会被清空（CF 平台行为），
+ * 而 secret_text 类型变量能正确保留。因此本函数强制使用 secret_text 类型。
  */
-export async function setPagesEnvVar(projectName: string, varName: string, value: string, env: "production" | "preview" = "production", type: "plain_text" | "secret_text" = "plain_text"): Promise<unknown> {
+export async function setPagesEnvVar(projectName: string, varName: string, value: string, env: "production" | "preview" = "production"): Promise<unknown> {
   const proj = await getPagesProject(projectName);
   const envVars = (proj.deployment_configs?.[env]?.env_vars ?? {}) as Record<string, CfPagesEnvVar>;
-  envVars[varName] = { value, type };
+  envVars[varName] = { value, type: "secret_text" };
   return proxy("PATCH", `${accountPrefix()}/pages/projects/${projectName}`, {
     deployment_configs: { [env]: { env_vars: envVars } },
   });
@@ -635,8 +639,9 @@ export async function getPagesProject(projectName: string): Promise<CfPagesProje
  * 项目的 GitHub 仓库 main 分支，触发 CF Pages 的 GitHub webhook 自动部署。
  *
  * CF Pages 部署后会用部署记录中的 env_vars 覆盖项目级配置，
- * 导致通过 API 设置的 plain_text 变量可能丢失。
- * 因此在触发部署前先保存快照，部署完成后客户端侧恢复。
+ * 导致通过 API 设置的变量可能丢失（plain_text 类型尤甚）。
+ * 因此在触发部署前先保存快照，部署完成后客户端侧恢复，
+ * 恢复时统一使用 secret_text 类型以确保部署后保留。
  *
  * 如果项目未连接 GitHub 仓库，则回退到 ad_hoc 部署（同样带恢复逻辑）。
  */
@@ -710,12 +715,17 @@ export async function createPagesDeployment(projectName: string): Promise<{ mess
 
     // 部署完成后恢复 env_vars 和 bindings
     try {
+      // 恢复时统一使用 secret_text 类型，因为 plain_text 变量在部署后会被 CF 平台清空
+      const restoredEnvVars: Record<string, CfPagesEnvVar> = {};
+      for (const [k, v] of Object.entries(savedEnvVars)) {
+        restoredEnvVars[k] = { value: v.value ?? "", type: "secret_text" };
+      }
       const restoreBody: Record<string, unknown> = {
         deployment_configs: { production: {} as Record<string, unknown> },
       };
       const prod = (restoreBody.deployment_configs as { production: Record<string, unknown> }).production;
-      if (Object.keys(savedEnvVars).length > 0) {
-        prod.env_vars = savedEnvVars;
+      if (Object.keys(restoredEnvVars).length > 0) {
+        prod.env_vars = restoredEnvVars;
       }
       if (Object.keys(savedKv).length > 0) {
         prod.kv_namespaces = savedKv;
@@ -786,12 +796,19 @@ async function createPagesDeploymentAdHoc(
 
     // 部署完成后恢复 env_vars 和 bindings
     try {
+      // 恢复时统一使用 secret_text 类型，因为 plain_text 变量在部署后会被 CF 平台清空
+      const restoredEnvVars: Record<string, CfPagesEnvVar> = {};
+      if (savedEnvVars) {
+        for (const [k, v] of Object.entries(savedEnvVars)) {
+          restoredEnvVars[k] = { value: v.value ?? "", type: "secret_text" };
+        }
+      }
       const restoreBody: Record<string, unknown> = {
         deployment_configs: { production: {} as Record<string, unknown> },
       };
       const prod = (restoreBody.deployment_configs as { production: Record<string, unknown> }).production;
-      if (savedEnvVars && Object.keys(savedEnvVars).length > 0) {
-        prod.env_vars = savedEnvVars;
+      if (Object.keys(restoredEnvVars).length > 0) {
+        prod.env_vars = restoredEnvVars;
       }
       if (savedKv && Object.keys(savedKv).length > 0) {
         prod.kv_namespaces = savedKv;

@@ -94,7 +94,7 @@ const envVars = ref<Record<string, CfPagesEnvVar>>({});
 const showAddEnv = ref(false);
 const newEnvName = ref("");
 const newEnvValue = ref("");
-const newEnvType = ref<"plain_text" | "secret_text">("plain_text");
+const newEnvType = ref<"plain_text" | "secret_text">("secret_text");
 const envTarget = ref<"production" | "preview">("production");
 const confirmDeleteEnv = ref<string | null>(null);
 
@@ -123,8 +123,8 @@ const newProjectDestDir = ref("");
 const newProjectRootDir = ref("");
 const newProjectFramework = ref("");
 
-// Pages 新建 - 环境变量
-const newProjectEnvs = ref<Array<{ name: string; value: string; type: "plain_text" | "secret_text" }>>([]);
+// Pages 新建 - 环境变量（统一使用 secret_text 类型，因为 plain_text 在部署后会丢失）
+const newProjectEnvs = ref<Array<{ name: string; value: string }>>([]);
 
 const counts = computed(() => ({
   workers: workers.value.length,
@@ -411,8 +411,7 @@ async function addEnvVar() {
       activeProject.value.name,
       newEnvName.value.trim(),
       newEnvValue.value,
-      envTarget.value,
-      newEnvType.value
+      envTarget.value
     );
     newEnvName.value = "";
     newEnvValue.value = "";
@@ -564,8 +563,7 @@ async function createProject() {
           newProjectName.value.trim(),
           env.name.trim(),
           env.value,
-          "production",
-          env.type
+          "production"
         );
       } catch (e) {
         projEnvErrors.push(`${env.name}: ${(e as Error).message}`);
@@ -1123,11 +1121,11 @@ onMounted(() => {
           </label>
           <label>
             类型
-            <select v-model="newEnvType">
-              <option value="plain_text">明文</option>
-              <option value="secret_text">机密（加密存储）</option>
+            <select v-model="newEnvType" disabled>
+              <option value="secret_text">机密（加密存储，部署后保留）</option>
             </select>
           </label>
+          <p class="hint">所有环境变量均以加密方式存储，确保部署后不丢失。</p>
         </div>
         <div class="btns">
           <button class="primary" @click="addEnvVar">添加</button>
@@ -1202,17 +1200,14 @@ onMounted(() => {
           </template>
           <p v-if="!newProjectUseGithub" class="hint">创建后可在项目详情中手动触发部署，或通过 wrangler 直接上传。</p>
 
-          <div class="section-divider">环境变量（可选）</div>
+          <div class="section-divider">环境变量（可选，加密存储）</div>
           <div v-for="(env, i) in newProjectEnvs" :key="`pe-${i}`" class="env-row">
             <input v-model="env.name" placeholder="变量名" class="env-name" />
             <input v-model="env.value" placeholder="值" class="env-val" />
-            <select v-model="env.type" class="env-type">
-              <option value="plain_text">明文</option>
-              <option value="secret_text">机密</option>
-            </select>
             <button class="env-del" @click="newProjectEnvs.splice(i, 1)">✕</button>
           </div>
-          <button class="add-env-btn" @click="newProjectEnvs.push({ name: '', value: '', type: 'plain_text' })">+ 添加环境变量</button>
+          <button class="add-env-btn" @click="newProjectEnvs.push({ name: '', value: '' })">+ 添加环境变量</button>
+          <p class="hint">变量以加密方式存储，确保部署后不丢失。</p>
         </div>
         <div class="btns">
           <button class="primary" @click="createProject">创建</button>
