@@ -26,6 +26,9 @@ const creating = ref(false);
 const createdTokenValue = ref<string | null>(null);
 const copiedToClipboard = ref(false);
 
+// 权限搜索
+const permSearch = ref("");
+
 // 删除确认
 const confirmDeleteId = ref<string | null>(null);
 
@@ -33,52 +36,183 @@ const confirmDeleteId = ref<string | null>(null);
 const confirmRotateId = ref<string | null>(null);
 const rotatedValue = ref<string | null>(null);
 
-// 预设模板
-type TemplateKey = "custom" | "panel_admin" | "read_all" | "dns_edit";
-const selectedTemplate = ref<TemplateKey>("custom");
+// 预设模板（已移除快速模板，只保留自定义）
 
-const templates: Record<TemplateKey, { label: string; desc: string; permIds: string[] }> = {
-  custom: { label: "自定义", desc: "手动选择权限组", permIds: [] },
-  panel_admin: { label: "面板管理（完整）", desc: "Workers / Pages / 存储 / DNS 等全部读写", permIds: [] },
-  read_all: { label: "只读全部", desc: "所有资源只读访问", permIds: [] },
-  dns_edit: { label: "DNS 编辑", desc: "Zone DNS 记录读写", permIds: [] },
-};
+// ---- 权限解析与分组 ----
 
-// 按 scope 分类的权限组
-const groupedPermissions = computed(() => {
-  const groups: Record<string, CfTokenPermissionGroup[]> = {};
-  for (const pg of permissionGroups.value) {
-    const scope = pg.scopes?.[0] ?? "其他";
-    if (!groups[scope]) groups[scope] = [];
-    groups[scope].push(pg);
+/** 已知操作后缀（按优先级排序，长的先匹配） */
+const KNOWN_OPS = [
+  "Metadata Read", "Metadata Write",
+  "Run Engine", "Send",
+  "Read", "Write", "Run", "Edit", "Revoke", "Admin", "Bind", "Purge",
+  "Report", "Telemetry Write", "Action", "Preview", "Trace", "Raw",
+];
+
+interface ParsedPerm {
+  pg: CfTokenPermissionGroup;
+  service: string;
+  op: string;       // 操作名，如 "Read"、"Write"、"Run"、"Report"
+  level: "read" | "write" | "other";
+}
+
+function parsePerm(pg: CfTokenPermissionGroup): ParsedPerm {
+  const name = pg.name;
+  let op = "";
+  let service = name;
+  for (const suffix of KNOWN_OPS) {
+    if (name.toLowerCase().endsWith(suffix.toLowerCase())) {
+      op = suffix;
+      service = name.slice(0, name.length - suffix.length).trim().replace(/[:\s]+$/, "");
+      break;
+    }
   }
+  return {
+    pg,
+    service: service || name,
+    op,
+    level: permLevel(pg),
+  };
+}
+
+interface ServiceGroup {
+  service: string;
+  scope: string;
+  perms: ParsedPerm[];
+  hasWrite: boolean;
+  hasRead: boolean;
+  opCount: number;
+  readOnly: boolean;   // 只有 Read，没有 Write
+  multiOp: boolean;   // 3+ 个操作
+}
+
+/** 按服务分组，支持搜索过滤 */
+const serviceGroups = computed<ServiceGroup[]>(() => {
+  const search = permSearch.value.trim().toLowerCase();
+  const parsed = permissionGroups.value
+    .filter((pg) => {
+      if (!search) return true;
+      return pg.name.toLowerCase().includes(search);
+    })
+    .map(parsePerm);
+
+  const map = new Map<string, ServiceGroup>();
+  for (const p of parsed) {
+    const scope = p.pg.scopes?.[0] ?? "其他";
+    const key = `${scope}::${p.service}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        service: p.service,
+        scope,
+        perms: [],
+        hasWrite: false,
+        hasRead: false,
+        opCount: 0,
+        readOnly: false,
+        multiOp: false,
+      });
+    }
+    const g = map.get(key)!;
+    g.perms.push(p);
+    if (p.level === "write") g.hasWrite = true;
+    if (p.level === "read") g.hasRead = true;
+  }
+
+  const groups = [...map.values()];
+  for (const g of groups) {
+    // 去重操作名
+    const ops = new Set(g.perms.map((p) => p.op));
+    g.opCount = ops.size;
+    g.readOnly = g.hasRead && !g.hasWrite;
+    g.multiOp = g.opCount >= 3;
+  }
+
+  // 排序：有写的优先，仅读的排后面，按名称字母序
+  groups.sort((a, b) => {
+    if (a.readOnly !== b.readOnly) return a.readOnly ? 1 : -1;
+    return a.service.localeCompare(b.service);
+  });
+
   return groups;
 });
 
-function applyTemplate(key: TemplateKey) {
-  selectedTemplate.value = key;
-  if (key === "custom") {
-    selectedPermIds.value = [];
-    return;
+/** 按 scope 再分组 service groups */
+const scopedServiceGroups = computed(() => {
+  const map = new Map<string, ServiceGroup[]>();
+  for (const g of serviceGroups.value) {
+    if (!map.has(g.scope)) map.set(g.scope, []);
+    map.get(g.scope)!.push(g);
   }
-  const matching = permissionGroups.value.filter((pg) => {
-    const name = pg.name.toLowerCase();
-    const scopes = pg.scopes ?? [];
-    if (key === "panel_admin") {
-      // 匹配包含 account 或 zone 级别的写权限
-      return scopes.some((s) => s.includes("account") || s.includes("zone")) &&
-        (name.includes("write") || name.includes("edit"));
-    }
-    if (key === "read_all") {
-      return name.includes("read");
-    }
-    if (key === "dns_edit") {
-      return name.includes("dns") && (name.includes("write") || name.includes("edit"));
-    }
-    return false;
-  });
-  selectedPermIds.value = matching.map((m) => m.id);
+  return map;
+});
+
+// ---- 选择操作 ----
+
+function togglePerm(id: string) {
+  const idx = selectedPermIds.value.indexOf(id);
+  if (idx >= 0) {
+    selectedPermIds.value.splice(idx, 1);
+  } else {
+    selectedPermIds.value.push(id);
+  }
 }
+
+function isPermSelected(id: string): boolean {
+  return selectedPermIds.value.includes(id);
+}
+
+/** 全选当前搜索结果 */
+function selectAllFiltered() {
+  const current = new Set(selectedPermIds.value);
+  for (const g of serviceGroups.value) {
+    for (const p of g.perms) {
+      current.add(p.pg.id);
+    }
+  }
+  selectedPermIds.value = [...current];
+}
+
+function selectFilteredRead() {
+  const current = new Set(selectedPermIds.value);
+  for (const g of serviceGroups.value) {
+    for (const p of g.perms) {
+      if (p.level === "read") current.add(p.pg.id);
+    }
+  }
+  selectedPermIds.value = [...current];
+}
+
+function selectFilteredWrite() {
+  const current = new Set(selectedPermIds.value);
+  for (const g of serviceGroups.value) {
+    for (const p of g.perms) {
+      if (p.level === "write") current.add(p.pg.id);
+    }
+  }
+  selectedPermIds.value = [...current];
+}
+
+function selectService(g: ServiceGroup) {
+  const current = new Set(selectedPermIds.value);
+  for (const p of g.perms) {
+    current.add(p.pg.id);
+  }
+  selectedPermIds.value = [...current];
+}
+
+function selectServiceByLevel(g: ServiceGroup, level: "read" | "write") {
+  const current = new Set(selectedPermIds.value);
+  for (const p of g.perms) {
+    if (p.level === level) current.add(p.pg.id);
+  }
+  selectedPermIds.value = [...current];
+}
+
+function clearSelection() {
+  selectedPermIds.value = [];
+  permSearch.value = "";
+}
+
+// ---- 数据加载 ----
 
 async function loadTokens() {
   loading.value = true;
@@ -96,7 +230,6 @@ async function loadPermissionGroups() {
   try {
     permissionGroups.value = await listTokenPermissionGroups();
   } catch (e) {
-    // 权限组加载失败不阻塞页面
     console.error("加载权限组失败", e);
   }
 }
@@ -113,22 +246,17 @@ async function handleCreate() {
   creating.value = true;
   error.value = "";
   try {
-    // 构建 policies
-    // resources 用 "com.cloudflare.api.account.*" 表示账号级资源
     const policies = [{
       effect: "allow" as const,
       resources: { "com.cloudflare.api.user.*": "*" },
       permission_groups: selectedPermIds.value.map((id) => ({ id })),
     }];
-
-    // 计算过期时间
     let expires_on: string | null = null;
     if (expiresInDays.value > 0) {
       const d = new Date();
       d.setDate(d.getDate() + expiresInDays.value);
       expires_on = d.toISOString();
     }
-
     const result = await createApiToken({
       name: newName.value.trim(),
       policies,
@@ -136,11 +264,9 @@ async function handleCreate() {
     });
     createdTokenValue.value = result.value ?? null;
     await loadTokens();
-    // 重置表单
     newName.value = "";
     selectedPermIds.value = [];
     expiresInDays.value = 0;
-    selectedTemplate.value = "custom";
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -175,7 +301,6 @@ async function copyText(text: string) {
     copiedToClipboard.value = true;
     setTimeout(() => { copiedToClipboard.value = false; }, 2000);
   } catch {
-    // fallback
     const ta = document.createElement("textarea");
     ta.value = text;
     document.body.appendChild(ta);
@@ -193,7 +318,7 @@ function closeCreateModal() {
   newName.value = "";
   selectedPermIds.value = [];
   expiresInDays.value = 0;
-  selectedTemplate.value = "custom";
+  permSearch.value = "";
   error.value = "";
 }
 
@@ -205,33 +330,6 @@ function formatDate(s?: string | null): string {
   } catch {
     return s;
   }
-}
-
-/** 判断权限组是读还是写 */
-/** 全选所有权限组 */
-function selectAllPerms() {
-  selectedPermIds.value = permissionGroups.value.map((pg) => pg.id);
-  selectedTemplate.value = "custom";
-}
-
-/** 按读写级别全选 */
-function selectPermsByLevel(level: "read" | "write") {
-  selectedPermIds.value = permissionGroups.value
-    .filter((pg) => permLevel(pg) === level)
-    .map((pg) => pg.id);
-  selectedTemplate.value = "custom";
-}
-
-/** 按 scope + 读写级别全选 */
-function selectScopeByLevel(scope: string, level: "read" | "write") {
-  const grouped = groupedPermissions.value;
-  const pgs = grouped[scope] ?? [];
-  const ids = pgs.filter((pg) => permLevel(pg) === level).map((pg) => pg.id);
-  // 合并到已选（而非替换），实现多个 scope 累加选择
-  const current = new Set(selectedPermIds.value);
-  for (const id of ids) current.add(id);
-  selectedPermIds.value = [...current];
-  selectedTemplate.value = "custom";
 }
 
 function permLevel(pg: CfTokenPermissionGroup): "read" | "write" | "other" {
@@ -376,46 +474,74 @@ onMounted(() => {
           </div>
 
           <div class="field">
-            <label>快速模板</label>
-            <div class="template-grid">
-              <button
-                v-for="(tpl, key) in templates"
-                :key="key"
-                class="template-card"
-                :class="{ active: selectedTemplate === key }"
-                @click="applyTemplate(key as TemplateKey)"
-              >
-                <div class="tpl-label">{{ tpl.label }}</div>
-                <div class="tpl-desc">{{ tpl.desc }}</div>
-              </button>
-            </div>
-          </div>
-
-          <div class="field">
             <label>权限组（{{ selectedPermIds.length }} 个已选）</label>
+
+            <!-- 搜索框 -->
+            <input
+              v-model="permSearch"
+              type="text"
+              class="perm-search"
+              placeholder="搜索权限名称…"
+            />
+
             <div v-if="permissionGroups.length === 0" class="perm-loading">正在加载权限组…</div>
             <div v-else class="perm-groups">
+              <!-- 全局工具栏 -->
               <div class="perm-toolbar">
-                <button class="btn-sm btn-selectall" @click="selectAllPerms">全选</button>
-                <button class="btn-sm btn-selectall" @click="selectPermsByLevel('read')">全选只读</button>
-                <button class="btn-sm btn-selectall" @click="selectPermsByLevel('write')">全选读写</button>
-                <button class="btn-sm btn-clear" @click="selectedPermIds = []">清空</button>
+                <button class="btn-sm btn-selectall" @click="selectAllFiltered">全选</button>
+                <button class="btn-sm btn-selectall" @click="selectFilteredRead">全选只读</button>
+                <button class="btn-sm btn-selectall" @click="selectFilteredWrite">全选读写</button>
+                <button class="btn-sm btn-clear" @click="clearSelection">清空</button>
               </div>
-              <div v-for="(pgs, scope) in groupedPermissions" :key="scope" class="perm-group">
-                <div class="perm-scope-row">
-                  <div class="perm-scope">{{ scope }}</div>
-                  <button class="btn-sm btn-selectall" @click="selectScopeByLevel(scope, 'read')">全选只读</button>
-                  <button class="btn-sm btn-selectall" @click="selectScopeByLevel(scope, 'write')">全选读写</button>
+
+              <!-- 图例 -->
+              <div class="legend">
+                <span class="legend-item"><span class="dot dot-read"></span>只读</span>
+                <span class="legend-item"><span class="dot dot-write"></span>读写</span>
+                <span class="legend-item"><span class="dot dot-readonly"></span>仅读（无编辑权限）</span>
+                <span class="legend-item"><span class="dot dot-multi"></span>多权限</span>
+              </div>
+
+              <!-- 按 scope → service 分组 -->
+              <div v-for="[scope, groups] in scopedServiceGroups" :key="scope" class="scope-section">
+                <div class="scope-label">{{ scope }}</div>
+
+                <div v-for="g in groups" :key="g.service" class="service-card" :class="{ 'service-readonly': g.readOnly }">
+                  <div class="service-head">
+                    <div class="service-name">{{ g.service }}</div>
+                    <div class="service-badges">
+                      <span v-if="g.readOnly" class="badge badge-readonly">仅读</span>
+                      <span v-if="g.multiOp" class="badge badge-multi">{{ g.opCount }}权限</span>
+                      <button class="btn-sm btn-service" @click="selectService(g)">全选</button>
+                      <button v-if="g.hasRead" class="btn-sm btn-service" @click="selectServiceByLevel(g, 'read')">只读</button>
+                      <button v-if="g.hasWrite" class="btn-sm btn-service" @click="selectServiceByLevel(g, 'write')">读写</button>
+                    </div>
+                  </div>
+                  <div class="service-ops">
+                    <label
+                      v-for="p in g.perms"
+                      :key="p.pg.id"
+                      class="op-chip"
+                      :class="{
+                        'op-selected': isPermSelected(p.pg.id),
+                        'op-read': p.level === 'read',
+                        'op-write': p.level === 'write',
+                        'op-other': p.level === 'other',
+                      }"
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="isPermSelected(p.pg.id)"
+                        @change="togglePerm(p.pg.id)"
+                      />
+                      <span>{{ p.op || p.pg.name }}</span>
+                    </label>
+                  </div>
                 </div>
-                <label v-for="pg in pgs" :key="pg.id" class="perm-item">
-                  <input
-                    type="checkbox"
-                    :value="pg.id"
-                    v-model="selectedPermIds"
-                  />
-                  <span>{{ pg.name }}</span>
-                  <span class="perm-level" :style="{ color: permLevelColor(permLevel(pg)) }">{{ permLevelLabel(permLevel(pg)) }}</span>
-                </label>
+              </div>
+
+              <div v-if="serviceGroups.length === 0" class="perm-loading">
+                未找到匹配的权限组
               </div>
             </div>
           </div>
@@ -586,14 +712,6 @@ onMounted(() => {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 6px;
-  background: rgba(122, 162, 247, 0.12);
-  color: #7aa2f7;
-}
-.perm-level {
-  font-size: 10px;
-  margin-left: auto;
-  opacity: 0.8;
-  font-weight: 600;
 }
 .token-actions {
   display: flex;
@@ -646,6 +764,10 @@ onMounted(() => {
   justify-content: space-between;
   padding: 16px 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  top: 0;
+  background: #131c2e;
+  z-index: 1;
 }
 .modal-head h3 {
   margin: 0;
@@ -683,42 +805,25 @@ onMounted(() => {
   color: #e8edf5;
   font-size: 14px;
 }
-.template-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.template-card {
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  text-align: left;
-  cursor: pointer;
-  color: #e8edf5;
-}
-.template-card.active {
-  border-color: #f69a22;
-  background: rgba(246, 154, 34, 0.08);
-}
-.tpl-label {
-  font-size: 13px;
-  font-weight: 600;
-}
-.tpl-desc {
-  font-size: 11px;
-  color: #8b95a9;
-  margin-top: 2px;
-}
 .perm-loading {
   color: #8b95a9;
   font-size: 13px;
   padding: 8px 0;
 }
+
+/* 权限选择区域 */
+.perm-search {
+  padding: 8px 12px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: #e8edf5 !important;
+  font-size: 13px !important;
+}
 .perm-groups {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .perm-toolbar {
   display: flex;
@@ -727,7 +832,8 @@ onMounted(() => {
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
-.perm-toolbar .btn-sm {
+.perm-toolbar .btn-sm,
+.service-badges .btn-sm {
   font-size: 11px;
   padding: 3px 10px;
 }
@@ -739,41 +845,143 @@ onMounted(() => {
   border-color: rgba(255, 122, 110, 0.3);
   color: #ff7a6e;
 }
-.perm-scope-row {
+
+/* 图例 */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: #8b95a9;
+}
+.legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 4px;
 }
-.perm-scope-row .btn-sm {
-  font-size: 10px;
-  padding: 2px 8px;
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
 }
-.perm-group {
-  padding: 8px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+.dot-read { background: #7aa2f7; }
+.dot-write { background: #e0af68; }
+.dot-readonly { background: #ff7a6e; }
+.dot-multi { background: #bb9af7; }
+
+/* scope 分区 */
+.scope-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.perm-group:first-child {
-  border-top: none;
-}
-.perm-scope {
+.scope-label {
   font-size: 11px;
   color: #f69a22;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  padding: 8px 0 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
-.perm-item {
+.scope-section:first-child .scope-label {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* 服务卡片 */
+.service-card {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+.service-card.service-readonly {
+  border-color: rgba(255, 122, 110, 0.2);
+  background: rgba(255, 122, 110, 0.04);
+}
+.service-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-  cursor: pointer;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.service-name {
   font-size: 12px;
+  font-weight: 600;
   color: #c0c8d8;
 }
-.perm-item input[type="checkbox"] {
-  accent-color: #f69a22;
+.service-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
 }
+.badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.badge-readonly {
+  background: rgba(255, 122, 110, 0.15);
+  color: #ff7a6e;
+}
+.badge-multi {
+  background: rgba(187, 154, 247, 0.15);
+  color: #bb9af7;
+}
+.btn-service {
+  font-size: 10px !important;
+  padding: 2px 8px !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 操作选项 */
+.service-ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.op-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+  cursor: pointer;
+  color: #8b95a9;
+  user-select: none;
+}
+.op-chip input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  accent-color: #f69a22;
+  margin: 0;
+}
+.op-chip.op-read { border-color: rgba(122, 162, 247, 0.25); }
+.op-chip.op-write { border-color: rgba(224, 175, 104, 0.25); }
+.op-chip.op-other { border-color: rgba(139, 149, 169, 0.2); }
+.op-chip.op-selected {
+  color: #e8edf5;
+}
+.op-chip.op-selected.op-read {
+  background: rgba(122, 162, 247, 0.15);
+  border-color: #7aa2f7;
+}
+.op-chip.op-selected.op-write {
+  background: rgba(224, 175, 104, 0.15);
+  border-color: #e0af68;
+}
+.op-chip.op-selected.op-other {
+  background: rgba(139, 149, 169, 0.15);
+  border-color: #8b95a9;
+}
+
+/* 模态框底部按钮 */
 .modal-actions {
   display: flex;
   justify-content: flex-end;
