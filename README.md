@@ -1,13 +1,4 @@
----
-AIGC:
-  ContentProducer: '001191110102MAD55U9H0F10002'
-  ContentPropagator: '001191110102MAD55U9H0F10002'
-  Label: '1'
-  ProduceID: 'b5002972-1804-44a9-b37f-6557d623814c'
-  PropagateID: 'b5002972-1804-44a9-b37f-6557d623814c'
-  ReservedCode1: '7f7bdf4b-f023-4881-91cc-5378ba7efd93'
-  ReservedCode2: '7f7bdf4b-f023-4881-91cc-5378ba7efd93'
----
+
 
 # CF Panel
 
@@ -21,6 +12,7 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 - **API 令牌**：查看/创建/删除/轮换 CF API Token，396 项权限按服务分组展示并全面中文化，支持分类快捷筛选（DNS/Workers/数据库/自定义），权限组标注只读/读写级别，混合 scope 权限自动拆分为多个策略
 
 ![主页面](1.jpg)
+
 ![dns管理](2.jpg)
 
 ## 安全设计
