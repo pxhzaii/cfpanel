@@ -207,15 +207,45 @@ function formatDate(s?: string | null): string {
   }
 }
 
-function getTokenPermNames(token: CfApiToken): string[] {
-  const names: string[] = [];
+/** 判断权限组是读还是写 */
+function permLevel(pg: CfTokenPermissionGroup): "read" | "write" | "other" {
+  const name = pg.name.toLowerCase();
+  if (name.includes("write") || name.includes("edit")) return "write";
+  if (name.includes("read")) return "read";
+  return "other";
+}
+
+function permLevelLabel(level: "read" | "write" | "other"): string {
+  switch (level) {
+    case "read": return "只读";
+    case "write": return "读写";
+    default: return "其他";
+  }
+}
+
+function permLevelColor(level: "read" | "write" | "other"): string {
+  switch (level) {
+    case "read": return "#7aa2f7";
+    case "write": return "#e0af68";
+    default: return "#8b95a9";
+  }
+}
+
+/** 获取 Token 的权限信息（含读写级别） */
+function getTokenPerms(token: CfApiToken): Array<{ name: string; level: "read" | "write" | "other" }> {
+  const result: Array<{ name: string; level: "read" | "write" | "other" }> = [];
+  const seen = new Set<string>();
   for (const policy of token.policies ?? []) {
     for (const pg of policy.permission_groups ?? []) {
+      if (seen.has(pg.id)) continue;
+      seen.add(pg.id);
       const found = permissionGroups.value.find((p) => p.id === pg.id);
-      if (found && !names.includes(found.name)) names.push(found.name);
+      if (found) {
+        result.push({ name: found.name, level: permLevel(found) });
+      }
     }
   }
-  return names;
+  return result;
 }
 
 function statusColor(status: string): string {
@@ -273,8 +303,15 @@ onMounted(() => {
           <span v-if="t.expires_on">过期：{{ formatDate(t.expires_on) }}</span>
           <span v-else>永不过期</span>
         </div>
-        <div v-if="getTokenPermNames(t).length" class="token-perms">
-          <span v-for="p in getTokenPermNames(t)" :key="p" class="perm-tag">{{ p }}</span>
+        <div v-if="getTokenPerms(t).length" class="token-perms">
+          <span
+            v-for="p in getTokenPerms(t)"
+            :key="p.name"
+            class="perm-tag"
+            :style="{ color: permLevelColor(p.level), background: permLevelColor(p.level) + '1f' }"
+          >
+            {{ p.name }} · {{ permLevelLabel(p.level) }}
+          </span>
         </div>
         <div class="token-actions">
           <button class="btn-sm btn-rotate" @click="confirmRotateId = t.id">轮换</button>
@@ -341,6 +378,7 @@ onMounted(() => {
                     v-model="selectedPermIds"
                   />
                   <span>{{ pg.name }}</span>
+                  <span class="perm-level" :style="{ color: permLevelColor(permLevel(pg)) }">{{ permLevelLabel(permLevel(pg)) }}</span>
                 </label>
               </div>
             </div>
@@ -514,6 +552,12 @@ onMounted(() => {
   border-radius: 6px;
   background: rgba(122, 162, 247, 0.12);
   color: #7aa2f7;
+}
+.perm-level {
+  font-size: 10px;
+  margin-left: auto;
+  opacity: 0.8;
+  font-weight: 600;
 }
 .token-actions {
   display: flex;
