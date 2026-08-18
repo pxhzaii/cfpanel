@@ -1,16 +1,43 @@
 /**
- * /api/redeploy — 通过 GitHub API 推送空 commit 触发 CF Pages webhook 部署。
+ * /api/redeploy — 通过 GitHub API 推送 commit 触发 CF Pages webhook 部署。
  *
- * ad_hoc 部署（POST /pages/projects/{name}/deployments）不继承环境变量，
- * 会用空 env_vars 覆盖项目级配置。改用推空 commit 的方式触发
- * GitHub webhook 部署，这种部署会正确继承所有环境变量和绑定。
+ * CF Pages 无论是 ad_hoc 还是 GitHub webhook 部署，都会用部署记录中的
+ * env_vars 快照覆盖项目级 env_vars。通过 API PATCH 设置的 plain_text
+ * 变量在部署后可能丢失。
  *
- * 需要在 Pages 环境变量中配置 GH_TOKEN（GitHub Token）。
+ * 解决方案：
+ *   1. 推 commit 前保存项目级 env_vars + bindings 快照
+ *   2. 用 Contents API 推文件触发 GitHub webhook 部署
+ *   3. 后台轮询部署状态直到完成（最多 5 分钟）
+ *   4. 部署完成后 PATCH 恢复丢失的 env_vars 和 bindings
+ *
+ * 需要在 Pages 环境变量中配置 GH_TOKEN（GitHub Token，需 repo 权限）。
  */
 import type { ApiFunction } from "../_types";
 
 interface Env extends Environment {
   GH_TOKEN?: string;
+}
+
+interface PagesEnvVar {
+  type: "plain_text" | "secret_text";
+  value: string;
+}
+
+interface ProjectConfig {
+  source?: { type: string; config?: { owner?: string; repo_name?: string; production_branch?: string } };
+  deployment_configs?: {
+    production?: {
+      env_vars?: Record<string, PagesEnvVar>;
+      kv_namespaces?: Record<string, unknown>;
+      r2_buckets?: Record<string, unknown>;
+      d1_databases?: Record<string, unknown>;
+    };
+  };
+}
+
+interface DeploymentResp {
+  latest_stage?: { name: string; status: string };
 }
 
 const CF_API_BASE = "https://api.cloudflare.com/client/v4";
@@ -41,7 +68,95 @@ function parseUsers(env: Environment): { username: string; password: string }[] 
   return [];
 }
 
-export const onRequest: ApiFunction = async ({ request, env }: { request: Request; env: Env; params: Record<string, unknown> }) => {
+/** 轮询部署状态 + 部署后恢复 env_vars/bindings */
+async function pollAndRestore(
+  cfHeaders: HeadersInit,
+  accountId: string,
+  projectName: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  ghHeaders: HeadersInit,
+  savedEnvVars: Record<string, PagesEnvVar>,
+  savedKv: Record<string, unknown>,
+  savedR2: Record<string, unknown>,
+  savedD1: Record<string, unknown>,
+): Promise<void> {
+  // 等待 CF Pages webhook 触发部署（webhook 有几秒延迟）
+  await new Promise((r) => setTimeout(r, 10000));
+
+  // 获取最新部署 ID
+  let deployId = "";
+  try {
+    const resp = await fetch(`${CF_API_BASE}/accounts/${accountId}/pages/projects/${projectName}/deployments?per_page=1`, {
+      headers: cfHeaders,
+    });
+    const raw = await resp.json() as { success: boolean; result?: DeploymentResp[] };
+    if (raw.success && raw.result && raw.result.length > 0) {
+      deployId = (raw.result[0] as DeploymentResp & { id: string }).id;
+    }
+  } catch {
+    // 忽略，下面轮询时再获取
+  }
+
+  // 轮询部署状态（最多 5 分钟）
+  const maxAttempts = 60;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    try {
+      // 获取最新部署
+      const resp = await fetch(`${CF_API_BASE}/accounts/${accountId}/pages/projects/${projectName}/deployments?per_page=1`, {
+        headers: cfHeaders,
+      });
+      const raw = await resp.json() as { success: boolean; result?: DeploymentResp[] };
+      if (raw.success && raw.result && raw.result.length > 0) {
+        const latest = raw.result[0];
+        const stage = latest.latest_stage;
+        if (stage && (stage.status === "success" || stage.status === "failure" || stage.status === "canceled")) {
+          break;
+        }
+      }
+    } catch {
+      // 继续重试
+    }
+  }
+
+  // 部署完成后恢复 env_vars 和 bindings
+  try {
+    const restoreBody: Record<string, unknown> = {
+      deployment_configs: { production: {} as Record<string, unknown> },
+    };
+    const prod = (restoreBody.deployment_configs as { production: Record<string, unknown> }).production;
+    if (Object.keys(savedEnvVars).length > 0) {
+      prod.env_vars = savedEnvVars;
+    }
+    if (Object.keys(savedKv).length > 0) {
+      prod.kv_namespaces = savedKv;
+    }
+    if (Object.keys(savedR2).length > 0) {
+      prod.r2_buckets = savedR2;
+    }
+    if (Object.keys(savedD1).length > 0) {
+      prod.d1_databases = savedD1;
+    }
+    if (Object.keys(prod).length > 0) {
+      await fetch(`${CF_API_BASE}/accounts/${accountId}/pages/projects/${projectName}`, {
+        method: "PATCH",
+        headers: cfHeaders,
+        body: JSON.stringify(restoreBody),
+      });
+    }
+  } catch {
+    // 恢复失败不影响部署本身
+  }
+}
+
+export const onRequest: ApiFunction = async ({ request, env, ctx }: {
+  request: Request;
+  env: Env;
+  params: Record<string, unknown>;
+  ctx: { waitUntil: (p: Promise<unknown>) => void };
+}) => {
   // 1. 鉴权
   if (!env.CF_API_TOKEN) {
     return json({ success: false, error: "服务端未配置 CF_API_TOKEN。" }, 500);
@@ -73,20 +188,19 @@ export const onRequest: ApiFunction = async ({ request, env }: { request: Reques
     return json({ success: false, error: "缺少 projectName 或 accountId。" }, 400);
   }
 
-  // 3. 通过 CF API 获取 Pages 项目信息（GitHub 仓库 owner/repo/branch）
+  // 3. CF API 请求头
   const cfHeaders: HeadersInit = {
     "Authorization": `Bearer ${env.CF_API_TOKEN}`,
     "Content-Type": "application/json",
   };
 
-  let projData: {
-    source?: { type: string; config?: { owner?: string; repo_name?: string; production_branch?: string } };
-  };
+  // 4. 获取 Pages 项目信息（GitHub 仓库 owner/repo/branch + 环境变量快照）
+  let projData: ProjectConfig;
   try {
     const resp = await fetch(`${CF_API_BASE}/accounts/${accountId}/pages/projects/${projectName}`, {
       headers: cfHeaders,
     });
-    const raw = await resp.json() as { success: boolean; result?: typeof projData; errors?: { message: string }[] };
+    const raw = await resp.json() as { success: boolean; result?: ProjectConfig; errors?: { message: string }[] };
     if (!resp.ok || !raw.success) {
       return json({ success: false, error: raw.errors?.[0]?.message ?? `获取项目信息失败（HTTP ${resp.status}）` }, resp.status);
     }
@@ -95,7 +209,7 @@ export const onRequest: ApiFunction = async ({ request, env }: { request: Reques
     return json({ success: false, error: `获取项目信息失败：${(e as Error).message}` }, 502);
   }
 
-  // 4. 检查是否为 GitHub 源
+  // 5. 检查是否为 GitHub 源
   const src = projData.source;
   if (!src || src.type !== "github" || !src.config?.owner || !src.config?.repo_name) {
     return json({ success: false, error: "该项目未连接 GitHub 仓库，无法通过推 commit 触发部署。" }, 400);
@@ -104,7 +218,7 @@ export const onRequest: ApiFunction = async ({ request, env }: { request: Reques
   const repo = src.config.repo_name;
   const branch = src.config.production_branch ?? "main";
 
-  // 5. 检查 GH_TOKEN
+  // 6. 检查 GH_TOKEN
   if (!env.GH_TOKEN) {
     return json({ success: false, error: "服务端未配置 GH_TOKEN 环境变量，无法推送 commit。" }, 500);
   }
@@ -116,12 +230,18 @@ export const onRequest: ApiFunction = async ({ request, env }: { request: Reques
     "User-Agent": "cfpanel-redeploy",
   };
 
+  // 7. 保存部署前的 env_vars + bindings 快照
+  const prod = projData.deployment_configs?.production;
+  const savedEnvVars = (prod?.env_vars ?? {}) as Record<string, PagesEnvVar>;
+  const savedKv = (prod?.kv_namespaces ?? {}) as Record<string, unknown>;
+  const savedR2 = (prod?.r2_buckets ?? {}) as Record<string, unknown>;
+  const savedD1 = (prod?.d1_databases ?? {}) as Record<string, unknown>;
+
   try {
-    // 6. 用 Contents API 推送/更新一个 .redeploy-trigger 文件触发 GitHub webhook
+    // 8. 用 Contents API 推送/更新 .redeploy-trigger 文件触发 GitHub webhook
     const triggerPath = ".redeploy-trigger";
     const content = btoa(`redeploy ${Date.now()}`);
 
-    // 先尝试直接创建文件（PUT /contents/{path}）
     let createResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${triggerPath}`, {
       method: "PUT",
       headers: ghHeaders,
@@ -160,10 +280,18 @@ export const onRequest: ApiFunction = async ({ request, env }: { request: Reques
     const result = await createResp.json() as { commit: { sha: string } };
     const commitSha = result.commit.sha;
 
+    // 9. 后台轮询部署状态 + 部署完成后恢复 env_vars/bindings
+    ctx.waitUntil(
+      pollAndRestore(
+        cfHeaders, accountId, projectName, owner, repo, branch, ghHeaders,
+        savedEnvVars, savedKv, savedR2, savedD1,
+      ),
+    );
+
     return json({
       success: true,
       commit_sha: commitSha,
-      message: `已推送 commit 到 ${owner}/${repo}@${branch}，等待 CF Pages webhook 自动部署。`,
+      message: `已推送 commit 到 ${owner}/${repo}@${branch}，CF Pages 将自动部署，部署完成后自动恢复环境变量。`,
     });
   } catch (e) {
     return json({ success: false, error: `GitHub API 请求失败：${(e as Error).message}` }, 502);
