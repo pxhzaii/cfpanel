@@ -81,5 +81,5 @@ cfpanel面板的"重新部署"功能通过 **GitHub API 推送 commit** 来触�
 如果项目未连接 GitHub 仓库，将回退到 ad_hoc 部署方式，同样在部署完成后自动恢复环境变量配置。
 
 
-GH_TOKEN获取 手机编辑的，最近会更
+GH_TOKEN获取 需要repo权限 手获取地址机编辑的，最近会更
 
