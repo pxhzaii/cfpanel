@@ -13,6 +13,10 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 ![主页面](1.jpg)
 
+
+![图片描述](./1.jpg)
+
+
 ![dns管理](2.jpg)
 
 ## 安全设计
