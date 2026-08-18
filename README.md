@@ -30,7 +30,7 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 | --- | --- | --- |
 | `PANEL_USERS` | 是 | 面板用户列表，下方有说明 |
 | `CF_API_TOKEN` | 是 | Cloudflare API Token，权限见下表 |
-| `GH_TOKEN` | 否 | GitHub Token（需 repo 权限），用于"重新部署"功能推空 commit 触发 GitHub webhook 部署 |
+| `GH_TOKEN` | 否 | GitHub Token（用于"重新部署"功能触发 GitHub webhook 部署 ，本文最后一个段落有说明|
 
 ### `PANEL_USERS` 怎么填
 
@@ -68,7 +68,7 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 
 
-## cfpanel面板 重新部署说明（可以无视）
+## cfpanel面板 重新部署说明
 
 cfpanel面板的"重新部署"功能通过 **GitHub API 推送 commit** 来触发 Cloudflare Pages 的 GitHub webhook 自动部署。
 
