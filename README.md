@@ -68,7 +68,7 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 
 
-## cfpanel面板 重新部署说明
+## 重新部署说明
 
 cfpanel面板的"重新部署"功能通过 **GitHub API 推送 commit** 来触发 Cloudflare Pages 的 GitHub webhook 自动部署。
 
@@ -79,4 +79,7 @@ cfpanel面板的"重新部署"功能通过 **GitHub API 推送 commit** 来触�
 2. 已配置 `GH_TOKEN` 环境变量（GitHub Token，需 repo 权限）
 
 如果项目未连接 GitHub 仓库，将回退到 ad_hoc 部署方式，同样在部署完成后自动恢复环境变量配置。
+
+
+GH_TOKEN获取 手机编辑的，最近会更
 
