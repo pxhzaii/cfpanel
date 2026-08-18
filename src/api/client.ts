@@ -1030,3 +1030,8 @@ export async function verifyApiToken(): Promise<{ id: string; status: string }[]
 export async function listTokenPermissionGroups(): Promise<CfTokenPermissionGroup[]> {
   return proxy<CfTokenPermissionGroup[]>("GET", "user/tokens/permission_groups");
 }
+
+/** 获取当前 CF 用户信息（真实 user id，非 account id） */
+export async function getUserInfo(): Promise<CfUser> {
+  return proxy<CfUser>("GET", "user");
+}

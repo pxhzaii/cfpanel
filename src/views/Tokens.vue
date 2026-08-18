@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import {
+  auth,
   listApiTokens,
   createApiToken,
   deleteApiToken,
   rotateApiTokenValue,
   listTokenPermissionGroups,
+  getUserInfo,
 } from "../api/client";
 import type {
   CfApiToken,
   CfTokenPermissionGroup,
+  CfTokenPolicy,
 } from "../api/types";
 
 // ---- 权限名中文映射表 ----
@@ -864,6 +867,16 @@ async function loadPermissionGroups() {
   }
 }
 
+// 缓存 user id（CF 的真实用户 id，非 account id）
+const cfUserId = ref<string>("");
+
+async function ensureUserId(): Promise<string> {
+  if (cfUserId.value) return cfUserId.value;
+  const user = await getUserInfo();
+  cfUserId.value = user.id;
+  return cfUserId.value;
+}
+
 async function handleCreate() {
   if (!newName.value.trim()) {
     error.value = "请填写 Token 名称";
@@ -876,11 +889,48 @@ async function handleCreate() {
   creating.value = true;
   error.value = "";
   try {
-    const policies = [{
-      effect: "allow" as const,
-      resources: { "com.cloudflare.api.user.*": "*" },
-      permission_groups: selectedPermIds.value.map((id) => ({ id })),
-    }];
+    // 根据选中权限组的 scopes 构建 resources
+    // account/zone scope -> "com.cloudflare.api.account.<accountId>": "*"
+    // user scope -> "com.cloudflare.api.user.<userId>": "*"
+    const accountId = auth.accountId;
+    const userId = await ensureUserId();
+
+    // 收集选中的权限组
+    const selectedGroups = permissionGroups.value.filter((g) =>
+      selectedPermIds.value.includes(g.id),
+    );
+
+    // 按 resource scope 分组：account 类和 user 类
+    const accountPermIds: string[] = [];
+    const userPermIds: string[] = [];
+    for (const g of selectedGroups) {
+      const scopes = g.scopes || [];
+      const isUserScope = scopes.some((s) => s.startsWith("com.cloudflare.api.user"));
+      if (isUserScope) {
+        userPermIds.push(g.id);
+      } else {
+        // account / account.zone / edge.r2 等都归入 account resource
+        accountPermIds.push(g.id);
+      }
+    }
+
+    // 构建 policies：每组相同 resource scope 的权限放一个 policy
+    const policies: CfTokenPolicy[] = [];
+    if (accountPermIds.length > 0) {
+      policies.push({
+        effect: "allow",
+        resources: { [`com.cloudflare.api.account.${accountId}`]: "*" },
+        permission_groups: accountPermIds.map((id) => ({ id })),
+      });
+    }
+    if (userPermIds.length > 0) {
+      policies.push({
+        effect: "allow",
+        resources: { [`com.cloudflare.api.user.${userId}`]: "*" },
+        permission_groups: userPermIds.map((id) => ({ id })),
+      });
+    }
+
     let expires_on: string | null = null;
     if (expiresInDays.value > 0) {
       const d = new Date();
