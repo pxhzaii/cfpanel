@@ -1004,28 +1004,29 @@ export async function listAccounts(): Promise<CfAccount[]> {
   return proxy<CfAccount[]>("GET", "accounts");
 }
 
-// ---------------- API Token ----------------
+// ---------------- API Token (User Tokens) ----------------
+// 使用 /user/tokens 路径，不需要 account 级权限
 
 export async function listApiTokens(): Promise<CfApiToken[]> {
-  return proxy<CfApiToken[]>("GET", `${accountPrefix()}/tokens`);
+  return proxy<CfApiToken[]>("GET", "user/tokens");
 }
 
 export async function createApiToken(params: CreateApiTokenParams): Promise<CfApiToken & { value?: string }> {
-  return proxy<CfApiToken & { value?: string }>("POST", `${accountPrefix()}/tokens`, params);
+  return proxy<CfApiToken & { value?: string }>("POST", "user/tokens", params);
 }
 
 export async function deleteApiToken(tokenId: string): Promise<unknown> {
-  return proxy("DELETE", `${accountPrefix()}/tokens/${tokenId}`);
+  return proxy("DELETE", `user/tokens/${tokenId}`);
 }
 
 export async function rotateApiTokenValue(tokenId: string): Promise<CfApiTokenValue> {
-  return proxy<CfApiTokenValue>("PUT", `${accountPrefix()}/tokens/${tokenId}/value`);
+  return proxy<CfApiTokenValue>("PUT", `user/tokens/${tokenId}/value`);
 }
 
 export async function verifyApiToken(): Promise<{ id: string; status: string }[]> {
-  return proxy<{ id: string; status: string }[]>("GET", `${accountPrefix()}/tokens/verify`);
+  return proxy<{ id: string; status: string }[]>("GET", "user/tokens/verify");
 }
 
 export async function listTokenPermissionGroups(): Promise<CfTokenPermissionGroup[]> {
-  return proxy<CfTokenPermissionGroup[]>("GET", `${accountPrefix()}/tokens/permission_groups`);
+  return proxy<CfTokenPermissionGroup[]>("GET", "user/tokens/permission_groups");
 }

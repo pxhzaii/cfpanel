@@ -117,7 +117,7 @@ async function handleCreate() {
     // resources 用 "com.cloudflare.api.account.*" 表示账号级资源
     const policies = [{
       effect: "allow" as const,
-      resources: { "com.cloudflare.api.account.*": "*" },
+      resources: { "com.cloudflare.api.user.*": "*" },
       permission_groups: selectedPermIds.value.map((id) => ({ id })),
     }];
 
