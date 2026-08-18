@@ -208,6 +208,32 @@ function formatDate(s?: string | null): string {
 }
 
 /** 判断权限组是读还是写 */
+/** 全选所有权限组 */
+function selectAllPerms() {
+  selectedPermIds.value = permissionGroups.value.map((pg) => pg.id);
+  selectedTemplate.value = "custom";
+}
+
+/** 按读写级别全选 */
+function selectPermsByLevel(level: "read" | "write") {
+  selectedPermIds.value = permissionGroups.value
+    .filter((pg) => permLevel(pg) === level)
+    .map((pg) => pg.id);
+  selectedTemplate.value = "custom";
+}
+
+/** 按 scope + 读写级别全选 */
+function selectScopeByLevel(scope: string, level: "read" | "write") {
+  const grouped = groupedPermissions.value;
+  const pgs = grouped[scope] ?? [];
+  const ids = pgs.filter((pg) => permLevel(pg) === level).map((pg) => pg.id);
+  // 合并到已选（而非替换），实现多个 scope 累加选择
+  const current = new Set(selectedPermIds.value);
+  for (const id of ids) current.add(id);
+  selectedPermIds.value = [...current];
+  selectedTemplate.value = "custom";
+}
+
 function permLevel(pg: CfTokenPermissionGroup): "read" | "write" | "other" {
   const name = pg.name.toLowerCase();
   if (name.includes("write") || name.includes("edit")) return "write";
@@ -369,8 +395,18 @@ onMounted(() => {
             <label>权限组（{{ selectedPermIds.length }} 个已选）</label>
             <div v-if="permissionGroups.length === 0" class="perm-loading">正在加载权限组…</div>
             <div v-else class="perm-groups">
+              <div class="perm-toolbar">
+                <button class="btn-sm btn-selectall" @click="selectAllPerms">全选</button>
+                <button class="btn-sm btn-selectall" @click="selectPermsByLevel('read')">全选只读</button>
+                <button class="btn-sm btn-selectall" @click="selectPermsByLevel('write')">全选读写</button>
+                <button class="btn-sm btn-clear" @click="selectedPermIds = []">清空</button>
+              </div>
               <div v-for="(pgs, scope) in groupedPermissions" :key="scope" class="perm-group">
-                <div class="perm-scope">{{ scope }}</div>
+                <div class="perm-scope-row">
+                  <div class="perm-scope">{{ scope }}</div>
+                  <button class="btn-sm btn-selectall" @click="selectScopeByLevel(scope, 'read')">全选只读</button>
+                  <button class="btn-sm btn-selectall" @click="selectScopeByLevel(scope, 'write')">全选读写</button>
+                </div>
                 <label v-for="pg in pgs" :key="pg.id" class="perm-item">
                   <input
                     type="checkbox"
@@ -684,6 +720,35 @@ onMounted(() => {
   flex-direction: column;
   gap: 12px;
 }
+.perm-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.perm-toolbar .btn-sm {
+  font-size: 11px;
+  padding: 3px 10px;
+}
+.btn-selectall {
+  border-color: rgba(122, 162, 247, 0.3);
+  color: #7aa2f7;
+}
+.btn-clear {
+  border-color: rgba(255, 122, 110, 0.3);
+  color: #ff7a6e;
+}
+.perm-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.perm-scope-row .btn-sm {
+  font-size: 10px;
+  padding: 2px 8px;
+}
 .perm-group {
   padding: 8px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -696,7 +761,6 @@ onMounted(() => {
   color: #f69a22;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 6px;
 }
 .perm-item {
   display: flex;
