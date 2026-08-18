@@ -5,7 +5,7 @@ AIGC:
   Label: '1'
   ProduceID: '8e62626a-631a-4d80-8462-195c9bb5c300'
   PropagateID: '8e62626a-631a-4d80-8462-195c9bb5c300'
-  ReservedCode1: 'e060d204-71e2-419a-9bea-e22dec38014a'
+  ReservedCode1:  'e060d204-71e2-419a-9bea-e22dec38014a'
   ReservedCode2: 'e060d204-71e2-419a-9bea-e22dec38014a'
 ---
 
