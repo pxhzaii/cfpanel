@@ -30,7 +30,7 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 | 变量名 | 必填 | 说明 |
 | --- | --- | --- |
-| `PANEL_USERS` | 是 | 面板用户列表，JSON 数组格式 |
+| `PANEL_USERS` | 是 | 面板用户列表，下方有说明 |
 | `CF_API_TOKEN` | 是 | Cloudflare API Token，权限见下表 |
 | `GH_TOKEN` | 否 | GitHub Token（需 repo 权限），用于"重新部署"功能推空 commit 触发 GitHub webhook 部署 |
 
@@ -38,16 +38,16 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 就是一个 JSON 数组，最外层 `[ ]`，里面每个用户一个 `{ }`。
 
-**单用户（直接复制下面这行，把密码改成你自己的）：**
+**单用户（直接复制下面这行，把账号/密码改成你的）：**
 
 ```
-[{"username":"admin","password":"你的密码"}]
+[{"username":"你的账号","password":"你的密码"}]
 ```
 
 **两个用户（用逗号分隔）：**
 
 ```
-[{"username":"admin","password":"你的密码"},{"username":"friend","password":"朋友的密码"}]
+[{"username":"你的账号","password":"你的密码"},{"username":"朋友的账号","password":"朋友的密码"}]
 ```
 
 > 注意：双引号必须是英文双引号 `"`，不能是中文引号。
@@ -70,9 +70,9 @@ Cloudflare 管理面板 — 部署在 Cloudflare Pages 上，用浏览器即可�
 
 
 
-## 重新部署说明
+## cfpanel面板 重新部署说明（可以无视）
 
-面板的"重新部署"功能通过 **GitHub API 推送 commit** 来触发 Cloudflare Pages 的 GitHub webhook 自动部署。
+cfpanel面板的"重新部署"功能通过 **GitHub API 推送 commit** 来触发 Cloudflare Pages 的 GitHub webhook 自动部署。
 
 **环境变量安全机制**：通过 API 设置的环境变量统一使用 `secret_text`（加密存储）类型。CF Pages 部署时会用部署记录中的环境变量快照覆盖项目级配置，实测发现 `plain_text` 类型变量在部署后会被清空，而 `secret_text` 类型能正确保留。面板在触发部署前会保存环境变量快照，部署完成后自动恢复（统一为 `secret_text` 类型），确保不丢失。
 
