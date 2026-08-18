@@ -92,4 +92,4 @@ GH_TOKEN获取 需要repo权限 手获取地址机编辑的，最近会更
    - **Note**（备注）：随便写
    - **Expiration**（有效期）：按需选择
    - **Scopes**（权限）：**只勾选 `repo`**，其他都不勾
-> [创建 Token（预设 repo 权限）](https://github.com/settings/tokens/new?description=NavSync%20Cloud%20Sync&scopes=repo)
+> [创建 Token（预设 repo 权限）](https://github.com/settings/tokens/new?description=cfpanelc%20Cloud%20Sync&scopes=repo)
